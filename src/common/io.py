@@ -1,1 +1,1 @@
-# Placeholder for src/common/io.py
+# Loaders for voxel/point cloud data

@@ -1,0 +1,16 @@
+# Example voxel params
+VOXEL_PARAMS = {
+    'harris_sigma': 1.0,
+    'harris_k': 0.05,
+    'nms_window': 3,
+    'sift_num_octaves': 3,
+    'sift_levels': 5
+}
+
+# Example point cloud params
+PC_PARAMS = {
+    'harris_knn': 20,
+    'harris_radius': 0.05,
+    'sift_radii': [0.02, 0.04, 0.08],
+    'nms_radius': 0.03
+}

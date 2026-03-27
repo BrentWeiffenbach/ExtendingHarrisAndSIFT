@@ -1,1 +1,2 @@
-# Placeholder for src/common/metrics.py
+class Metrics:
+    # Evaluation metrics; repeatability / error

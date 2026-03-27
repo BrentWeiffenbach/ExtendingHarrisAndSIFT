@@ -1,1 +1,7 @@
-# Placeholder for src/evaluation/evaluate_voxel.py
+def evaluate_detector(detector, dataset):
+    results = []
+    for data in dataset:
+        keypoints = detector.detect(data)
+        # Compute metrics (repeatability, localization error, etc.)
+        results.append(keypoints)
+    return results
