@@ -1,0 +1,3 @@
+[submodule "data/real/ModelNet10-dataset"]
+	path = data/real/ModelNet10-dataset
+	url = git@github.com:SomTambe/ModelNet10-dataset.git
