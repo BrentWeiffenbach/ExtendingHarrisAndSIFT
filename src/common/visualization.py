@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional, cast
 
 import numpy as np
 from matplotlib import pyplot as plt
 
 
 def _as_xyz_points(points_like) -> np.ndarray:
-    points = points_like
+    points: Any = points_like
     if isinstance(points, np.ndarray) and points.ndim == 0:
         points = points.item()
 
-    if hasattr(points, "points"):
+    if not isinstance(points, np.ndarray) and hasattr(points, "points"):
         points = np.asarray(points.points)
     else:
         points = np.asarray(points)
@@ -39,7 +39,7 @@ def plot_voxels(
     n = len(volumes)
     fig = plt.figure(figsize=(5 * n, 5))
     for i, vol in enumerate(volumes):
-        ax = fig.add_subplot(1, n, i + 1, projection="3d")
+        ax = cast(Any, fig.add_subplot(1, n, i + 1, projection="3d"))
 
         mask = vol.astype(bool)
         ax.voxels(mask, facecolors="steelblue", edgecolors=None, alpha=0.5)
@@ -70,12 +70,12 @@ def plot_pointcloud(
 
     for i, pt in enumerate(pts):
         xyz = _as_xyz_points(pt)
-        ax = fig.add_subplot(1, n, i + 1, projection="3d")
+        ax = cast(Any, fig.add_subplot(1, n, i + 1, projection="3d"))
         ax.scatter(
             xyz[::5, 0],
             xyz[::5, 1],
             xyz[::5, 2],
-            s=0.5,
+            s=1,
             c=xyz[::5, 2],
             cmap="viridis",
         )
