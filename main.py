@@ -1,6 +1,8 @@
-from src.common.visualization import plot_voxels
-import numpy as np
 import gzip
+
+import numpy as np
+
+from src.common.visualization import plot_voxels
 
 
 def main():
@@ -18,6 +20,7 @@ def main():
         [cube, chair],
         titles=["Synthetic Cube", "Real Chair (ModelNet10)"],
     )
+
 
 if __name__ == "__main__":
     main()

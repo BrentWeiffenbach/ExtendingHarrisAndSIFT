@@ -12,9 +12,10 @@ Usage:
     python data/generate_sample.py
 """
 
+from pathlib import Path
+
 import numpy as np
 import open3d as o3d
-from pathlib import Path
 
 SYNTHETIC_DIR = Path(__file__).parent / "synthetic"
 REAL_DIR = Path(__file__).parent / "real"
@@ -27,6 +28,7 @@ RNG = np.random.default_rng(42)
 # ---------------------------------------------------------------------------
 # Synthetic helpers
 # ---------------------------------------------------------------------------
+
 
 def _save_ply(points: np.ndarray, path: Path) -> None:
     pcd = o3d.geometry.PointCloud()
@@ -51,8 +53,9 @@ def generate_cube(n_per_face: int = 2000, noise_std: float = 0.01) -> np.ndarray
     return pts
 
 
-def generate_sphere(n_points: int = 12000, radius: float = 1.0,
-                    noise_std: float = 0.01) -> np.ndarray:
+def generate_sphere(
+    n_points: int = 12000, radius: float = 1.0, noise_std: float = 0.01
+) -> np.ndarray:
     """Uniformly sample a sphere surface using Marsaglia method."""
     v = RNG.standard_normal((n_points, 3))
     v /= np.linalg.norm(v, axis=1, keepdims=True)
@@ -65,6 +68,7 @@ def generate_sphere(n_points: int = 12000, radius: float = 1.0,
 # Real data via open3d built-in downloader
 # ---------------------------------------------------------------------------
 
+
 def download_bunny() -> None:
     """Download the Stanford Bunny mesh, sample a point cloud, and save it."""
     dest = REAL_DIR / "bunny.ply"
@@ -73,7 +77,7 @@ def download_bunny() -> None:
         return
 
     print("Downloading Stanford Bunny via open3d datasets …")
-    bunny = o3d.data.BunnyMesh()          # downloads on first call (~3 MB)
+    bunny = o3d.data.BunnyMesh()  # downloads on first call (~3 MB)
     mesh = o3d.io.read_triangle_mesh(bunny.path)
     mesh.compute_vertex_normals()
 
@@ -99,5 +103,5 @@ if __name__ == "__main__":
     download_bunny()
 
     print("\nAll sample data ready.")
-    print("  Synthetic → data/synthetic/")
-    print("  Real      → data/real/")
+    print("  Synthetic → data/Pointcloud/synthetic/")
+    print("  Real      → data/Pointcloud/real/")
