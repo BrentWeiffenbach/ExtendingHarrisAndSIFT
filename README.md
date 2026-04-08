@@ -34,6 +34,41 @@ Overlay detected points on slices, isosurfaces, or volume renderings.
 - Visual results with captions  
 - Discussion on smoothing scale, sampling resolution, and anisotropy
 
+#### A1 Implementation Notes (Current Code)
+
+The voxel implementation lives in `src/voxel/harris3d.py` with defaults in
+`src/voxel/params.py`.
+
+- Gradients: Derivative-of-Gaussian (`gradient_sigma=0.6`)
+- Tensor smoothing: Gaussian on each structure-tensor term (`tensor_sigma=0.9`)
+- Cornerness: `R = det(M) - k * trace(M)^3` with `k=0.024`
+- NMS: 3D max filter with `nms_window=5` and border suppression (`border=1`)
+- NMS tie-break: greedy suppression removes plateau duplicates near one geometric corner
+- Thresholding: `threshold_rel=0.05` of the largest score after applying `response_mode`
+- Extrema mode: `response_mode="positive"` (suppresses surface/edge-like responses)
+- Output cap: `max_keypoints=None` (no hard cap in the default submission path)
+- Spatial balancing: `balanced_bins=(1, 1, 1)` (disabled by default)
+
+To make detections more selective, increase `nms_window` (larger 3D neighborhood) and/or set
+`max_keypoints` to a finite value for display-focused outputs.
+
+Anisotropy handling:
+- Parameters accept `spacing=(dx, dy, dz)` to account for non-uniform voxel size.
+- Smoothing sigmas are scaled per-axis, and gradients are normalized by spacing,
+  so responses are less biased when one axis has different physical sampling.
+
+To generate visual results and captions on synthetic voxel shapes:
+
+```bash
+python -m src.evaluation.evaluate_voxel
+```
+
+Generated artifacts:
+- `outputs/harris3d/*_volume.png`
+- `outputs/harris3d/captions.md`
+- `outputs/harris3d_real/chair_volume.png`
+- `outputs/harris3d_real/captions.md`
+
 ---
 
 ### A2. 3D Harris on Point Clouds
