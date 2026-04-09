@@ -135,7 +135,15 @@ class SIFT2D:
                         is_max = value > float(np.max(neighbors))
                         is_min = value < float(np.min(neighbors))
                         if is_max or is_min:
-                            points.append((float(y), float(x), float(scale_idx), value))
+                            refined = self._refine_extremum_2d(
+                                dogs_list=dogs_list,
+                                scale_idx=scale_idx,
+                                y=y,
+                                x=x,
+                                threshold=threshold,
+                            )
+                            if refined is not None:
+                                points.append(refined)
 
             if points:
                 extrema = np.asarray(points, dtype=np.float32)
@@ -171,3 +179,88 @@ class SIFT2D:
         if not rows:
             return np.empty((0, 5), dtype=np.float32)
         return np.vstack(rows).astype(np.float32)
+
+    def _refine_extremum_2d(
+        self,
+        dogs_list: list[np.ndarray],
+        scale_idx: int,
+        y: int,
+        x: int,
+        threshold: float,
+    ) -> tuple[float, float, float, float] | None:
+        s = int(scale_idx)
+        yy = int(y)
+        xx = int(x)
+        offset_threshold = float(self.params.refinement_offset_threshold)
+        singular_eps = float(self.params.refinement_singular_eps)
+        if s <= 0 or s >= len(dogs_list) - 1:
+            return None
+
+        prev_img = dogs_list[s - 1]
+        curr_img = dogs_list[s]
+        next_img = dogs_list[s + 1]
+        h, w = curr_img.shape
+
+        if yy <= 0 or yy >= h - 1 or xx <= 0 or xx >= w - 1:
+            return None
+
+        value = float(curr_img[yy, xx])
+
+        dy = 0.5 * float(curr_img[yy + 1, xx] - curr_img[yy - 1, xx])
+        dx = 0.5 * float(curr_img[yy, xx + 1] - curr_img[yy, xx - 1])
+        ds = 0.5 * float(next_img[yy, xx] - prev_img[yy, xx])
+        grad = np.array([dy, dx, ds], dtype=np.float64)
+
+        dyy = float(curr_img[yy + 1, xx] - 2.0 * value + curr_img[yy - 1, xx])
+        dxx = float(curr_img[yy, xx + 1] - 2.0 * value + curr_img[yy, xx - 1])
+        dss = float(next_img[yy, xx] - 2.0 * value + prev_img[yy, xx])
+
+        dxy = 0.25 * float(
+            curr_img[yy + 1, xx + 1]
+            - curr_img[yy + 1, xx - 1]
+            - curr_img[yy - 1, xx + 1]
+            + curr_img[yy - 1, xx - 1]
+        )
+        dys = 0.25 * float(
+            next_img[yy + 1, xx]
+            - next_img[yy - 1, xx]
+            - prev_img[yy + 1, xx]
+            + prev_img[yy - 1, xx]
+        )
+        dxs = 0.25 * float(
+            next_img[yy, xx + 1]
+            - next_img[yy, xx - 1]
+            - prev_img[yy, xx + 1]
+            + prev_img[yy, xx - 1]
+        )
+
+        hessian = np.array(
+            [
+                [dyy, dxy, dys],
+                [dxy, dxx, dxs],
+                [dys, dxs, dss],
+            ],
+            dtype=np.float64,
+        )
+
+        if float(abs(np.linalg.det(hessian))) < singular_eps:
+            return None
+
+        try:
+            offset = -np.linalg.solve(hessian, grad)
+        except np.linalg.LinAlgError:
+            return None
+
+        if np.any(np.abs(offset) > offset_threshold):
+            return None
+
+        refined_response = value + 0.5 * float(np.dot(grad, offset))
+        if abs(refined_response) < threshold:
+            return None
+
+        return (
+            float(yy + offset[0]),
+            float(xx + offset[1]),
+            float(s + offset[2]),
+            float(refined_response),
+        )

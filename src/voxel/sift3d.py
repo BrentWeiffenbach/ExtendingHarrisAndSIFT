@@ -191,17 +191,53 @@ class SIFT3DVoxel(Detector3D):
                             is_max = value > float(np.max(neighbors))
                             is_min = value < float(np.min(neighbors))
                             if is_max or is_min:
-                                points.append(
-                                    (
-                                        float(z),
-                                        float(y),
-                                        float(x),
-                                        float(dog_idx),
-                                        value,
-                                        float(octave_idx),
-                                        sigma_char,
-                                    )
+                                refined = self._refine_extremum_3d(
+                                    octave_dogs=octave_dogs,
+                                    dog_idx=dog_idx,
+                                    z=z,
+                                    y=y,
+                                    x=x,
+                                    threshold=threshold,
                                 )
+                                if refined is not None:
+                                    rz, ry, rx, rs, response = refined
+                                    rs_clamped = float(
+                                        np.clip(rs, 0.0, len(dog_sigma_pairs[octave_idx]) - 1)
+                                    )
+                                    sigma_idx0 = int(np.floor(rs_clamped))
+                                    sigma_idx1 = min(
+                                        sigma_idx0 + 1,
+                                        len(dog_sigma_pairs[octave_idx]) - 1,
+                                    )
+                                    t = float(np.clip(rs_clamped - sigma_idx0, 0.0, 1.0))
+
+                                    low0, high0, _ = dog_sigma_pairs[octave_idx][
+                                        sigma_idx0
+                                    ]
+                                    low1, high1, _ = dog_sigma_pairs[octave_idx][
+                                        sigma_idx1
+                                    ]
+                                    sigma_char0 = float(
+                                        np.sqrt(max(1e-12, low0 * high0))
+                                    )
+                                    sigma_char1 = float(
+                                        np.sqrt(max(1e-12, low1 * high1))
+                                    )
+                                    sigma_char_refined = float(
+                                        (1.0 - t) * sigma_char0 + t * sigma_char1
+                                    )
+
+                                    points.append(
+                                        (
+                                            rz,
+                                            ry,
+                                            rx,
+                                            rs,
+                                            response,
+                                            float(octave_idx),
+                                            sigma_char_refined,
+                                        )
+                                    )
 
             extrema = (
                 np.asarray(points, dtype=np.float32)
@@ -235,3 +271,119 @@ class SIFT3DVoxel(Detector3D):
         if not rows:
             return np.empty((0, 7), dtype=np.float32)
         return np.vstack(rows).astype(np.float32)
+
+    def _refine_extremum_3d(
+        self,
+        octave_dogs: list[np.ndarray],
+        dog_idx: int,
+        z: int,
+        y: int,
+        x: int,
+        threshold: float,
+    ) -> tuple[float, float, float, float, float] | None:
+        s = int(dog_idx)
+        zz = int(z)
+        yy = int(y)
+        xx = int(x)
+        offset_threshold = float(self.params.refinement_offset_threshold)
+        singular_eps = float(self.params.refinement_singular_eps)
+        if s <= 0 or s >= len(octave_dogs) - 1:
+            return None
+
+        prev_vol = octave_dogs[s - 1]
+        curr_vol = octave_dogs[s]
+        next_vol = octave_dogs[s + 1]
+        z_max, y_max, x_max = curr_vol.shape
+
+        if (
+            zz <= 0
+            or zz >= z_max - 1
+            or yy <= 0
+            or yy >= y_max - 1
+            or xx <= 0
+            or xx >= x_max - 1
+        ):
+            return None
+
+        value = float(curr_vol[zz, yy, xx])
+
+        dz = 0.5 * float(curr_vol[zz + 1, yy, xx] - curr_vol[zz - 1, yy, xx])
+        dy = 0.5 * float(curr_vol[zz, yy + 1, xx] - curr_vol[zz, yy - 1, xx])
+        dx = 0.5 * float(curr_vol[zz, yy, xx + 1] - curr_vol[zz, yy, xx - 1])
+        ds = 0.5 * float(next_vol[zz, yy, xx] - prev_vol[zz, yy, xx])
+        grad = np.array([dz, dy, dx, ds], dtype=np.float64)
+
+        dzz = float(curr_vol[zz + 1, yy, xx] - 2.0 * value + curr_vol[zz - 1, yy, xx])
+        dyy = float(curr_vol[zz, yy + 1, xx] - 2.0 * value + curr_vol[zz, yy - 1, xx])
+        dxx = float(curr_vol[zz, yy, xx + 1] - 2.0 * value + curr_vol[zz, yy, xx - 1])
+        dss = float(next_vol[zz, yy, xx] - 2.0 * value + prev_vol[zz, yy, xx])
+
+        dzy = 0.25 * float(
+            curr_vol[zz + 1, yy + 1, xx]
+            - curr_vol[zz + 1, yy - 1, xx]
+            - curr_vol[zz - 1, yy + 1, xx]
+            + curr_vol[zz - 1, yy - 1, xx]
+        )
+        dzx = 0.25 * float(
+            curr_vol[zz + 1, yy, xx + 1]
+            - curr_vol[zz + 1, yy, xx - 1]
+            - curr_vol[zz - 1, yy, xx + 1]
+            + curr_vol[zz - 1, yy, xx - 1]
+        )
+        dyx = 0.25 * float(
+            curr_vol[zz, yy + 1, xx + 1]
+            - curr_vol[zz, yy + 1, xx - 1]
+            - curr_vol[zz, yy - 1, xx + 1]
+            + curr_vol[zz, yy - 1, xx - 1]
+        )
+        dzs = 0.25 * float(
+            next_vol[zz + 1, yy, xx]
+            - next_vol[zz - 1, yy, xx]
+            - prev_vol[zz + 1, yy, xx]
+            + prev_vol[zz - 1, yy, xx]
+        )
+        dys = 0.25 * float(
+            next_vol[zz, yy + 1, xx]
+            - next_vol[zz, yy - 1, xx]
+            - prev_vol[zz, yy + 1, xx]
+            + prev_vol[zz, yy - 1, xx]
+        )
+        dxs = 0.25 * float(
+            next_vol[zz, yy, xx + 1]
+            - next_vol[zz, yy, xx - 1]
+            - prev_vol[zz, yy, xx + 1]
+            + prev_vol[zz, yy, xx - 1]
+        )
+
+        hessian = np.array(
+            [
+                [dzz, dzy, dzx, dzs],
+                [dzy, dyy, dyx, dys],
+                [dzx, dyx, dxx, dxs],
+                [dzs, dys, dxs, dss],
+            ],
+            dtype=np.float64,
+        )
+
+        if float(abs(np.linalg.det(hessian))) < singular_eps:
+            return None
+
+        try:
+            offset = -np.linalg.solve(hessian, grad)
+        except np.linalg.LinAlgError:
+            return None
+
+        if np.any(np.abs(offset) > offset_threshold):
+            return None
+
+        refined_response = value + 0.5 * float(np.dot(grad, offset))
+        if abs(refined_response) < threshold:
+            return None
+
+        return (
+            float(zz + offset[0]),
+            float(yy + offset[1]),
+            float(xx + offset[2]),
+            float(s + offset[3]),
+            float(refined_response),
+        )
