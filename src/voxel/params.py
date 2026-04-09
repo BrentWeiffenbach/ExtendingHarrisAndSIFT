@@ -1,1 +1,27 @@
-# Placeholder for src/voxel/params.py
+from dataclasses import dataclass
+
+
+@dataclass
+class SIFT2DParams:
+    num_octaves: int = 4
+    scales_per_octave: int = 5
+    base_sigma: float = 1.6
+    contrast_threshold: float = 0.03
+    border: int = 1
+    max_plot_points: int = 4000
+
+
+@dataclass
+class SIFT3DParams:
+    num_octaves: int = 4
+    scales_per_octave: int = 5
+    base_sigma: float = 1.6
+    min_size: int = 8
+    downsample_factor: int = 2
+    downsample_sigma: float = 1.0
+    border_mode: str = "reflect"
+    slice_axis: int = 0
+    extrema_contrast_threshold: float = 0.01
+    extrema_border: int = 1
+    blob_radius_factor: float = 1.0
+    max_blob_keypoints: int = 2000
