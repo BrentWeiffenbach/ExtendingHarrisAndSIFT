@@ -11,6 +11,24 @@ from src.voxel.params import SIFT2DParams
 
 
 @dataclass
+class SIFT2DOrientationSignature:
+    keypoint: np.ndarray
+    octave_index: int
+    scale_index: int
+    center_yx: np.ndarray
+    sigma: float
+    patch: np.ndarray
+    patch_origin_yx: np.ndarray
+    sample_points: np.ndarray
+    gradient_vectors: np.ndarray
+    magnitudes: np.ndarray
+    orientations: np.ndarray
+    histogram: np.ndarray
+    bin_edges: np.ndarray
+    dominant_orientation: float
+
+
+@dataclass
 class SIFT2DResult:
     original_image: np.ndarray
     gaussian_pyramid: list[list[np.ndarray]]
@@ -18,6 +36,7 @@ class SIFT2DResult:
     dog_pyramid: list[list[np.ndarray]]
     extrema_local: list[np.ndarray]
     extrema_global: np.ndarray
+    orientation_signatures: list[SIFT2DOrientationSignature]
 
 
 class SIFT2D:
@@ -30,6 +49,9 @@ class SIFT2D:
         dogs = self.compute_dog_pyramid(gaussians)
         extrema_local = self.detect_extrema(dogs)
         extrema_global = self.to_global_coordinates(extrema_local)
+        orientation_signatures = self.compute_orientation_signatures(
+            gaussians, sigmas, extrema_local
+        )
         return SIFT2DResult(
             original_image=image,
             gaussian_pyramid=gaussians,
@@ -37,6 +59,7 @@ class SIFT2D:
             dog_pyramid=dogs,
             extrema_local=extrema_local,
             extrema_global=extrema_global,
+            orientation_signatures=orientation_signatures,
         )
 
     def _to_grayscale_float(self, image_input: str | np.ndarray) -> np.ndarray:
@@ -179,6 +202,143 @@ class SIFT2D:
         if not rows:
             return np.empty((0, 5), dtype=np.float32)
         return np.vstack(rows).astype(np.float32)
+
+    def compute_orientation_signatures(
+        self,
+        gaussian_pyramid: list[list[np.ndarray]],
+        sigma_pyramid: list[list[float]],
+        extrema_local: Iterable[np.ndarray],
+    ) -> list[SIFT2DOrientationSignature]:
+        signatures: list[SIFT2DOrientationSignature] = []
+        bins = int(self.params.orientation_bins)
+        if bins <= 0:
+            return signatures
+
+        bin_edges = np.linspace(0.0, 2.0 * np.pi, bins + 1, dtype=np.float32)
+
+        for octave_extrema in extrema_local:
+            if octave_extrema.size == 0:
+                continue
+
+            octave_index = (
+                int(round(float(octave_extrema[0, 4])))
+                if octave_extrema.shape[0]
+                else 0
+            )
+            octave_index = int(np.clip(octave_index, 0, len(gaussian_pyramid) - 1))
+
+            for row in octave_extrema:
+                center_y = float(row[0])
+                center_x = float(row[1])
+                scale_index = int(
+                    np.clip(
+                        round(float(row[2])), 0, len(gaussian_pyramid[octave_index]) - 1
+                    )
+                )
+                response = float(row[3])
+                octave = int(round(float(row[4])))
+                octave = int(np.clip(octave, 0, len(gaussian_pyramid) - 1))
+
+                signature = self._compute_orientation_signature_for_keypoint(
+                    gaussian_pyramid[octave],
+                    sigma_pyramid[octave],
+                    center_yx=np.array([center_y, center_x], dtype=np.float32),
+                    scale_index=scale_index,
+                    response=response,
+                    octave_index=octave,
+                    bin_edges=bin_edges,
+                )
+                if signature is not None:
+                    signatures.append(signature)
+
+        return signatures
+
+    def _compute_orientation_signature_for_keypoint(
+        self,
+        octave_images: list[np.ndarray],
+        octave_sigmas: list[float],
+        center_yx: np.ndarray,
+        scale_index: int,
+        response: float,
+        octave_index: int,
+        bin_edges: np.ndarray,
+    ) -> SIFT2DOrientationSignature | None:
+        if scale_index < 0 or scale_index >= len(octave_images):
+            return None
+
+        image = octave_images[scale_index].astype(np.float32)
+        sigma = float(octave_sigmas[scale_index])
+        center_y = float(center_yx[0])
+        center_x = float(center_yx[1])
+
+        gradient = np.gradient(image)
+        grad_y = np.asarray(gradient[0], dtype=np.float32)
+        grad_x = np.asarray(gradient[1], dtype=np.float32)
+        window_radius = max(
+            1, int(round(self.params.orientation_window_factor * sigma))
+        )
+        weight_sigma = max(
+            1e-6, float(self.params.orientation_weight_sigma_factor) * sigma
+        )
+
+        y_center = int(round(center_y))
+        x_center = int(round(center_x))
+        y0 = max(0, y_center - window_radius)
+        y1 = min(image.shape[0] - 1, y_center + window_radius)
+        x0 = max(0, x_center - window_radius)
+        x1 = min(image.shape[1] - 1, x_center + window_radius)
+        if y0 > y1 or x0 > x1:
+            return None
+
+        yy, xx = np.mgrid[y0 : y1 + 1, x0 : x1 + 1]
+        dy = grad_y[y0 : y1 + 1, x0 : x1 + 1]
+        dx = grad_x[y0 : y1 + 1, x0 : x1 + 1]
+        patch = image[y0 : y1 + 1, x0 : x1 + 1].astype(np.float32)
+
+        sample_points = np.column_stack([yy.ravel(), xx.ravel()]).astype(np.float32)
+        gradient_vectors = np.column_stack([dy.ravel(), dx.ravel()]).astype(np.float32)
+        magnitudes = np.sqrt(np.sum(gradient_vectors**2, axis=1)).astype(np.float32)
+        orientations = np.mod(
+            np.arctan2(gradient_vectors[:, 0], gradient_vectors[:, 1]), 2.0 * np.pi
+        ).astype(np.float32)
+
+        dist2 = (yy.astype(np.float32) - center_y) ** 2 + (
+            xx.astype(np.float32) - center_x
+        ) ** 2
+        weights = np.exp(-dist2 / (2.0 * weight_sigma**2)).astype(np.float32).ravel()
+        weighted_magnitudes = magnitudes * weights
+
+        histogram, _ = np.histogram(
+            orientations,
+            bins=bin_edges,
+            weights=weighted_magnitudes,
+        )
+        histogram = histogram.astype(np.float32)
+        dominant_bin = int(np.argmax(histogram)) if histogram.size else 0
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        dominant_orientation = (
+            float(bin_centers[dominant_bin]) if bin_centers.size else 0.0
+        )
+
+        return SIFT2DOrientationSignature(
+            keypoint=np.array(
+                [center_y, center_x, float(scale_index), response, float(octave_index)],
+                dtype=np.float32,
+            ),
+            octave_index=int(octave_index),
+            scale_index=int(scale_index),
+            center_yx=center_yx.astype(np.float32),
+            sigma=sigma,
+            patch=patch,
+            patch_origin_yx=np.array([float(y0), float(x0)], dtype=np.float32),
+            sample_points=sample_points,
+            gradient_vectors=gradient_vectors,
+            magnitudes=magnitudes,
+            orientations=orientations,
+            histogram=histogram,
+            bin_edges=bin_edges.astype(np.float32),
+            dominant_orientation=dominant_orientation,
+        )
 
     def _refine_extremum_2d(
         self,

@@ -5,12 +5,13 @@ import numpy as np
 from src.common.visualization import (
     plot_dog_scale_space_3d,
     plot_dog_scale_space,
-    plot_extrema_overlay,
-    plot_extrema_blobs_voxel,
+    plot_extrema_gradient_overlay_3d,
     plot_extrema_scale_space_3d,
     plot_gaussian_scale_space,
     plot_gaussian_scale_space_3d,
     plot_gaussian_scale_space_3d_interactive,
+    plot_extrema_gradient_overlay,
+    plot_sift2d_orientation_views,
     plot_voxel_storage_layout,
     rasterize_extrema_blobs_3d,
     view_dog_scale_space_3d_napari,
@@ -36,12 +37,41 @@ def run_2d_demo():
     plot_gaussian_scale_space(result.gaussian_pyramid, result.sigma_pyramid)
     plot_dog_scale_space(result.dog_pyramid)
     plot_extrema_scale_space_3d(result.extrema_local, max_points=params.max_plot_points)
-    plot_extrema_overlay(
+    plot_extrema_gradient_overlay(
         result.original_image,
-        result.extrema_global,
+        result.orientation_signatures,
         base_sigma=params.base_sigma,
         scales_per_octave=params.scales_per_octave,
     )
+
+
+def run_2d_signature_demo():
+    image_path = "data/2d/image_0011.jpg"
+    params = SIFT2DParams(
+        num_octaves=4,
+        scales_per_octave=5,
+        base_sigma=1.6,
+        contrast_threshold=0.0,
+    )
+    detector = SIFT2D(params)
+    result = detector.run(image_path)
+
+    signatures = sorted(
+        result.orientation_signatures,
+        key=lambda signature: abs(float(signature.keypoint[3])),
+        reverse=True,
+    )
+    if not signatures:
+        return
+
+    signature_index = int(
+        np.clip(
+            params.orientation_visual_keypoint_index,
+            0,
+            len(signatures) - 1,
+        )
+    )
+    plot_sift2d_orientation_views(result.original_image, signatures[signature_index])
 
 
 def run_3d_gaussian_demo():
@@ -153,13 +183,12 @@ def run_3d_extrema_demo():
     )
     detector = SIFT3DVoxel(params)
     result = detector.run(volume_path)
-    blob_labels, _centers = rasterize_extrema_blobs_3d(
-        result.original_volume.shape,
+    plot_extrema_gradient_overlay_3d(
+        result.original_volume,
         result.extrema_global,
         radius_factor=params.blob_radius_factor,
         max_blobs=params.max_blob_keypoints,
     )
-    plot_extrema_blobs_voxel(result.original_volume, blob_labels)
 
 
 def run_3d_extrema_napari_demo():
@@ -184,7 +213,12 @@ def run_3d_extrema_napari_demo():
         radius_factor=params.blob_radius_factor,
         max_blobs=params.max_blob_keypoints,
     )
-    view_extrema_blobs_3d_napari(result.original_volume, blob_labels, centers)
+    view_extrema_blobs_3d_napari(
+        result.original_volume,
+        blob_labels,
+        centers,
+        result.extrema_global,
+    )
 
 
 def run_voxel_storage_demo():
@@ -198,6 +232,7 @@ def main():
         "--mode",
         choices=[
             "2d",
+            "2d-signature",
             "3d-gaussian",
             "3d-gaussian-interactive",
             "3d-gaussian-napari",
@@ -214,6 +249,8 @@ def main():
 
     if args.mode == "2d":
         run_2d_demo()
+    elif args.mode == "2d-signature":
+        run_2d_signature_demo()
     elif args.mode == "3d-gaussian":
         run_3d_gaussian_demo()
     elif args.mode == "3d-gaussian-interactive":
@@ -226,10 +263,12 @@ def main():
         run_3d_dog_napari_demo()
     elif args.mode == "3d-extrema":
         run_3d_extrema_demo()
+    elif args.mode == "3d-extrema-napari":
+        run_3d_extrema_napari_demo()
     elif args.mode == "voxel-storage":
         run_voxel_storage_demo()
     else:
-        run_3d_extrema_napari_demo()
+        raise ValueError(f"Unknown mode: {args.mode}")
 
 
 if __name__ == "__main__":

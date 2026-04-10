@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Circle
 from matplotlib.widgets import Slider
+from scipy.ndimage import map_coordinates
 
 
 def _as_xyz_points(points_like) -> np.ndarray:
@@ -508,6 +509,82 @@ def rasterize_extrema_blobs_3d(
     return labels, np.asarray(centers, dtype=np.float32)
 
 
+def _compute_extrema_gradient_vectors_3d(
+    original_volume: np.ndarray,
+    zyx: np.ndarray,
+    sigma: np.ndarray,
+) -> np.ndarray:
+    gradient = np.gradient(original_volume.astype(np.float32))
+    grad_z = np.asarray(gradient[0], dtype=np.float32)
+    grad_y = np.asarray(gradient[1], dtype=np.float32)
+    grad_x = np.asarray(gradient[2], dtype=np.float32)
+    center_grad = np.column_stack(
+        [
+            map_coordinates(
+                grad_z,
+                [zyx[:, 0], zyx[:, 1], zyx[:, 2]],
+                order=1,
+                mode="nearest",
+            ),
+            map_coordinates(
+                grad_y,
+                [zyx[:, 0], zyx[:, 1], zyx[:, 2]],
+                order=1,
+                mode="nearest",
+            ),
+            map_coordinates(
+                grad_x,
+                [zyx[:, 0], zyx[:, 1], zyx[:, 2]],
+                order=1,
+                mode="nearest",
+            ),
+        ]
+    ).astype(np.float32)
+
+    vectors = np.zeros_like(center_grad, dtype=np.float32)
+    for i, (row, sig) in enumerate(zip(zyx, sigma)):
+        direction = center_grad[i]
+        mag = float(np.linalg.norm(direction))
+
+        if mag <= 1e-6:
+            zc, yc, xc = int(round(float(row[0]))), int(round(float(row[1]))), int(round(float(row[2])))
+            search_radius = max(1, int(round(np.sqrt(2.0) * float(sig))))
+
+            z0 = max(0, zc - search_radius)
+            z1 = min(original_volume.shape[0] - 1, zc + search_radius)
+            y0 = max(0, yc - search_radius)
+            y1 = min(original_volume.shape[1] - 1, yc + search_radius)
+            x0 = max(0, xc - search_radius)
+            x1 = min(original_volume.shape[2] - 1, xc + search_radius)
+
+            gz_patch = grad_z[z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1]
+            gy_patch = grad_y[z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1]
+            gx_patch = grad_x[z0 : z1 + 1, y0 : y1 + 1, x0 : x1 + 1]
+            gmag_patch = np.sqrt(gz_patch**2 + gy_patch**2 + gx_patch**2)
+
+            if gmag_patch.size > 0:
+                best_idx = np.unravel_index(int(np.argmax(gmag_patch)), gmag_patch.shape)
+                direction = np.array(
+                    [
+                        float(gz_patch[best_idx]),
+                        float(gy_patch[best_idx]),
+                        float(gx_patch[best_idx]),
+                    ],
+                    dtype=np.float32,
+                )
+                mag = float(np.linalg.norm(direction))
+
+        if mag <= 1e-6:
+            direction = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+            mag = 1.0
+
+        direction = direction / mag
+        arrow_length = max(1.5, np.sqrt(2.0) * float(sig) * 0.75)
+        vectors[i] = direction * arrow_length
+
+    return vectors
+
+
 def plot_extrema_blobs_voxel(
     original_volume: np.ndarray,
     blob_labels: np.ndarray,
@@ -528,10 +605,87 @@ def plot_extrema_blobs_voxel(
     plt.show()
 
 
+def plot_extrema_gradient_overlay_3d(
+    original_volume: np.ndarray,
+    extrema_global: np.ndarray,
+    radius_factor: float = 1.0,
+    max_blobs: Optional[int] = None,
+):
+    fig = plt.figure(figsize=(11, 6))
+    ax = cast(Any, fig.add_subplot(111, projection="3d"))
+
+    base = original_volume.astype(bool)
+    ax.voxels(base, facecolors="steelblue", edgecolors=None, alpha=0.2)
+
+    if extrema_global.size == 0:
+        ax.set_title("3D Extrema Gradient Overlay")
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        plt.tight_layout()
+        plt.show()
+        return
+
+    data = np.asarray(extrema_global, dtype=np.float32)
+    if max_blobs is not None and data.shape[0] > max_blobs:
+        idx = np.argsort(np.abs(data[:, 4]))[::-1][:max_blobs]
+        data = data[idx]
+
+    blob_labels, _ = rasterize_extrema_blobs_3d(
+        original_volume.shape,
+        data,
+        radius_factor=radius_factor,
+        max_blobs=None,
+    )
+
+    zyx = data[:, :3]
+    sigma = data[:, 3]
+    response = data[:, 4]
+
+    ax.voxels(blob_labels > 0, facecolors="orangered", edgecolors=None, alpha=0.45)
+
+    vectors = _compute_extrema_gradient_vectors_3d(original_volume, zyx, sigma)
+
+    max_abs = float(np.max(np.abs(response))) if response.size else 1.0
+    if max_abs <= 0.0:
+        max_abs = 1.0
+    cmap = cm.get_cmap("plasma")
+    norm = colors.Normalize(vmin=-max_abs, vmax=max_abs)
+
+    for row, resp, vector in zip(zyx, response, vectors):
+        zc, yc, xc = float(row[0]), float(row[1]), float(row[2])
+        color = cmap(norm(float(resp)))
+
+        dz, dy, dx = float(vector[0]), float(vector[1]), float(vector[2])
+        ax.quiver(
+            xc,
+            yc,
+            zc,
+            dx,
+            dy,
+            dz,
+            color=color,
+            linewidth=1.2,
+            arrow_length_ratio=0.2,
+            alpha=0.95,
+        )
+
+    sm = cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    fig.colorbar(sm, ax=ax, shrink=0.72, label="DoG response")
+    ax.set_title("3D Extrema Blobs with Gradient Arrows")
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    plt.tight_layout()
+    plt.show()
+
+
 def view_extrema_blobs_3d_napari(
     original_volume: np.ndarray,
     blob_labels: np.ndarray,
     centers: np.ndarray,
+    extrema_global: Optional[np.ndarray] = None,
 ):
     try:
         napari = importlib.import_module("napari")
@@ -563,10 +717,28 @@ def view_extrema_blobs_3d_napari(
             points_kwargs["border_color"] = "black"
         viewer.add_points(**points_kwargs)
 
+    if extrema_global is not None and extrema_global.size > 0:
+        extrema = np.asarray(extrema_global, dtype=np.float32)
+        zyx = extrema[:, :3]
+        sigma = extrema[:, 3]
+        vectors = _compute_extrema_gradient_vectors_3d(original_volume, zyx, sigma)
+        vector_data = np.stack([zyx, vectors], axis=1)
+
+        vector_kwargs: dict[str, Any] = {
+            "data": vector_data,
+            "name": "Gradient Arrows",
+        }
+        add_vectors_params = inspect.signature(viewer.add_vectors).parameters
+        if "edge_width" in add_vectors_params:
+            vector_kwargs["edge_width"] = 1.1
+        if "edge_color" in add_vectors_params:
+            vector_kwargs["edge_color"] = "cyan"
+        viewer.add_vectors(**vector_kwargs)
+
     viewer.scale_bar.visible = True
     viewer.text_overlay.visible = True
     viewer.text_overlay.text = (
-        "Blob overlays represent scale-dependent extrema support."
+        "Blob overlays represent scale-dependent extrema support; arrows show local gradient direction."
     )
     napari.run()
 
@@ -677,6 +849,192 @@ def plot_extrema_overlay(
             ax.legend(handles=legend_handles, title="Octave (shape)", loc="upper right")
 
     plt.tight_layout()
+    plt.show()
+
+
+def plot_extrema_gradient_overlay(
+    original_image: np.ndarray,
+    orientation_signatures,
+    base_sigma: float = 1.6,
+    scales_per_octave: int = 5,
+):
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.imshow(original_image, cmap="gray")
+    ax.set_title("Keypoint Gradient Overlay on Original Image")
+    ax.axis("off")
+
+    signatures = [sig for sig in orientation_signatures if sig is not None]
+    if signatures:
+        scale_indices = np.array([float(sig.scale_index) for sig in signatures], dtype=np.float32)
+        norm = colors.Normalize(
+            vmin=float(np.min(scale_indices)), vmax=float(np.max(scale_indices)) + 1e-8
+        )
+        cmap = cm.get_cmap("plasma")
+
+        for signature in signatures:
+            octave = float(signature.octave_index)
+            scale_index = float(signature.scale_index)
+            center_yx = np.asarray(signature.center_yx, dtype=np.float32) * (2.0 ** octave)
+            y = float(center_yx[0])
+            x = float(center_yx[1])
+
+            sigma = float(signature.sigma) * (2.0 ** octave)
+            radius = max(1.0, np.sqrt(2.0) * sigma)
+            arrow_length = max(3.0, 0.9 * np.sqrt(2.0) * sigma)
+            theta = float(signature.dominant_orientation)
+            dx = float(np.cos(theta) * arrow_length)
+            dy = float(np.sin(theta) * arrow_length)
+            color = cmap(norm(scale_index))
+
+            ax.add_patch(
+                Circle(
+                    (x, y),
+                    radius=radius,
+                    fill=False,
+                    edgecolor=color,
+                    linewidth=1.2,
+                    alpha=0.85,
+                )
+            )
+
+            ax.quiver(
+                x,
+                y,
+                dx,
+                dy,
+                color=[color],
+                angles="xy",
+                scale_units="xy",
+                scale=1.0,
+                width=0.0045,
+                headwidth=4.5,
+                headlength=6.0,
+                headaxislength=5.2,
+                alpha=0.95,
+            )
+
+        sm = cm.ScalarMappable(norm=norm, cmap=cmap)
+        sm.set_array([])
+        fig.colorbar(sm, ax=ax, shrink=0.75, label="DoG scale index")
+
+        marker_cycle = ["o", "s", "^", "D", "P", "X", "v", "<", ">", "*"]
+        unique_octaves = np.unique([int(sig.octave_index) for sig in signatures])
+        legend_handles: list[Line2D] = []
+        for i, octave in enumerate(unique_octaves):
+            marker = marker_cycle[i % len(marker_cycle)]
+            legend_handles.append(
+                Line2D(
+                    [0],
+                    [0],
+                    marker=marker,
+                    color="none",
+                    markerfacecolor="lightgray",
+                    markeredgecolor="black",
+                    markersize=6,
+                    label=f"Octave {octave}",
+                )
+            )
+
+        if legend_handles:
+            ax.legend(handles=legend_handles, title="Octave (shape)", loc="upper right")
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_sift2d_orientation_views(original_image: np.ndarray, signature) -> None:
+    image = np.asarray(original_image, dtype=np.float32)
+    if image.ndim != 2 or image.size == 0:
+        return
+
+    center_y = float(signature.center_yx[0])
+    center_x = float(signature.center_yx[1])
+
+    sample_points = np.asarray(signature.sample_points, dtype=np.float32)
+    gradient_vectors = np.asarray(signature.gradient_vectors, dtype=np.float32)
+    magnitudes = np.asarray(signature.magnitudes, dtype=np.float32)
+    histogram = np.asarray(signature.histogram, dtype=np.float32)
+    bin_edges = np.asarray(signature.bin_edges, dtype=np.float32)
+
+    fig_grad, ax_grad = plt.subplots(figsize=(7, 6))
+    ax_grad.imshow(image, cmap="gray", origin="upper")
+    ax_grad.set_title(
+        f"Gradient samples on image for keypoint (o={signature.octave_index}, s={signature.scale_index})"
+    )
+    ax_grad.set_xlabel("x")
+    ax_grad.set_ylabel("y")
+
+    window_radius = max(1, int(round(3.0 * float(signature.sigma))))
+    x0 = max(0, int(round(center_x)) - window_radius)
+    x1 = min(image.shape[1] - 1, int(round(center_x)) + window_radius)
+    y0 = max(0, int(round(center_y)) - window_radius)
+    y1 = min(image.shape[0] - 1, int(round(center_y)) + window_radius)
+    ax_grad.set_xlim(x0 - 0.5, x1 + 0.5)
+    ax_grad.set_ylim(y1 + 0.5, y0 - 0.5)
+
+    if sample_points.size > 0 and gradient_vectors.size > 0:
+        point_x = sample_points[:, 1]
+        point_y = sample_points[:, 0]
+        max_mag = float(np.max(magnitudes)) if magnitudes.size else 1.0
+        max_mag = max(max_mag, 1e-6)
+        vec_x = gradient_vectors[:, 1] / max_mag * 0.85
+        vec_y = gradient_vectors[:, 0] / max_mag * 0.85
+        ax_grad.quiver(
+            point_x,
+            point_y,
+            vec_x,
+            vec_y,
+            magnitudes,
+            cmap="viridis",
+            angles="xy",
+            scale_units="xy",
+            scale=1.0,
+            width=0.004,
+            alpha=0.9,
+        )
+
+    ax_grad.scatter(
+        [center_x],
+        [center_y],
+        c="red",
+        s=40,
+        marker="x",
+        label="keypoint",
+    )
+    ax_grad.legend(loc="upper right")
+
+    fig_hist, ax_hist = plt.subplots(figsize=(7, 5))
+    if histogram.size > 0 and bin_edges.size == histogram.size + 1:
+        widths = np.diff(bin_edges)
+        centers = bin_edges[:-1] + widths / 2.0
+        centers_deg = np.degrees(centers)
+        widths_deg = np.degrees(widths)
+        ax_hist.bar(
+            centers_deg,
+            histogram,
+            width=widths_deg,
+            align="center",
+            color="#4c78a8",
+            edgecolor="black",
+            alpha=0.9,
+        )
+        dominant_deg = float(np.degrees(signature.dominant_orientation))
+        ax_hist.axvline(dominant_deg, color="crimson", linestyle="--", linewidth=1.5)
+        ax_hist.text(
+            dominant_deg,
+            float(np.max(histogram)) if histogram.size else 0.0,
+            f"  dominant={dominant_deg:.1f}°",
+            color="crimson",
+            va="bottom",
+        )
+    ax_hist.set_xlim(0.0, 360.0)
+    ax_hist.set_xlabel("Orientation (degrees)")
+    ax_hist.set_ylabel("Weighted gradient magnitude")
+    ax_hist.set_title("SIFT2D orientation histogram signature")
+    ax_hist.grid(alpha=0.2)
+
+    fig_grad.suptitle("Local gradient samples", fontsize=12)
+    fig_hist.suptitle("Orientation histogram", fontsize=12)
     plt.show()
 
 

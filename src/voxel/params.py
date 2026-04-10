@@ -10,6 +10,10 @@ class SIFT2DParams:
     border: int = 1
     refinement_offset_threshold: float = 1.6
     refinement_singular_eps: float = 1e-10
+    orientation_bins: int = 36
+    orientation_window_factor: float = 3.0
+    orientation_weight_sigma_factor: float = 1.5
+    orientation_visual_keypoint_index: int = 0
     max_plot_points: int = 4000
 
 

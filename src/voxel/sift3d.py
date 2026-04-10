@@ -202,14 +202,20 @@ class SIFT3DVoxel(Detector3D):
                                 if refined is not None:
                                     rz, ry, rx, rs, response = refined
                                     rs_clamped = float(
-                                        np.clip(rs, 0.0, len(dog_sigma_pairs[octave_idx]) - 1)
+                                        np.clip(
+                                            rs,
+                                            0.0,
+                                            len(dog_sigma_pairs[octave_idx]) - 1,
+                                        )
                                     )
                                     sigma_idx0 = int(np.floor(rs_clamped))
                                     sigma_idx1 = min(
                                         sigma_idx0 + 1,
                                         len(dog_sigma_pairs[octave_idx]) - 1,
                                     )
-                                    t = float(np.clip(rs_clamped - sigma_idx0, 0.0, 1.0))
+                                    t = float(
+                                        np.clip(rs_clamped - sigma_idx0, 0.0, 1.0)
+                                    )
 
                                     low0, high0, _ = dog_sigma_pairs[octave_idx][
                                         sigma_idx0
