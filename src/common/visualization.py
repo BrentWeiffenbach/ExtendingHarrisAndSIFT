@@ -547,7 +547,11 @@ def _compute_extrema_gradient_vectors_3d(
         mag = float(np.linalg.norm(direction))
 
         if mag <= 1e-6:
-            zc, yc, xc = int(round(float(row[0]))), int(round(float(row[1]))), int(round(float(row[2])))
+            zc, yc, xc = (
+                int(round(float(row[0]))),
+                int(round(float(row[1]))),
+                int(round(float(row[2]))),
+            )
             search_radius = max(1, int(round(np.sqrt(2.0) * float(sig))))
 
             z0 = max(0, zc - search_radius)
@@ -563,7 +567,9 @@ def _compute_extrema_gradient_vectors_3d(
             gmag_patch = np.sqrt(gz_patch**2 + gy_patch**2 + gx_patch**2)
 
             if gmag_patch.size > 0:
-                best_idx = np.unravel_index(int(np.argmax(gmag_patch)), gmag_patch.shape)
+                best_idx = np.unravel_index(
+                    int(np.argmax(gmag_patch)), gmag_patch.shape
+                )
                 direction = np.array(
                     [
                         float(gz_patch[best_idx]),
@@ -737,9 +743,7 @@ def view_extrema_blobs_3d_napari(
 
     viewer.scale_bar.visible = True
     viewer.text_overlay.visible = True
-    viewer.text_overlay.text = (
-        "Blob overlays represent scale-dependent extrema support; arrows show local gradient direction."
-    )
+    viewer.text_overlay.text = "Blob overlays represent scale-dependent extrema support; arrows show local gradient direction."
     napari.run()
 
 
@@ -865,7 +869,9 @@ def plot_extrema_gradient_overlay(
 
     signatures = [sig for sig in orientation_signatures if sig is not None]
     if signatures:
-        scale_indices = np.array([float(sig.scale_index) for sig in signatures], dtype=np.float32)
+        scale_indices = np.array(
+            [float(sig.scale_index) for sig in signatures], dtype=np.float32
+        )
         norm = colors.Normalize(
             vmin=float(np.min(scale_indices)), vmax=float(np.max(scale_indices)) + 1e-8
         )
@@ -874,11 +880,13 @@ def plot_extrema_gradient_overlay(
         for signature in signatures:
             octave = float(signature.octave_index)
             scale_index = float(signature.scale_index)
-            center_yx = np.asarray(signature.center_yx, dtype=np.float32) * (2.0 ** octave)
+            center_yx = np.asarray(signature.center_yx, dtype=np.float32) * (
+                2.0**octave
+            )
             y = float(center_yx[0])
             x = float(center_yx[1])
 
-            sigma = float(signature.sigma) * (2.0 ** octave)
+            sigma = float(signature.sigma) * (2.0**octave)
             radius = max(1.0, np.sqrt(2.0) * sigma)
             arrow_length = max(3.0, 0.9 * np.sqrt(2.0) * sigma)
             theta = float(signature.dominant_orientation)
