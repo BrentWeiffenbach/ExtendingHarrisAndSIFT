@@ -1,40 +1,81 @@
 import gzip
+import os
+import sys
 
 import numpy as np
-import open3d as o3d
 
-from src.common.visualization import plot_pointcloud, plot_voxels
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
+from src.common.visualization import plot_voxels
+from src.evaluation.evaluate_voxel import (
+    load_synthetic_voxel_dataset,
+    run_harris3d_random_modelnet_sample,
+    run_harris3d_real_chair,
+)
+
+SHOW_PLOTS = True
+ONLY_REAL = False
 
 
 def main():
-    # Voxel Synthetic cube: (32, 32, 32) bool
-    cube = np.load("data/Voxel/synthetic/pyramid.npy")
-    # Pointcloud Synthetic cube
-    pcd_cube = np.asarray(
-        o3d.io.read_point_cloud("data/Pointcloud/synthetic/cube_noisy.ply").points
-    )
+    # Show all synthetic voxel shapes with detected keypoints
+    from src.voxel.harris3d import Harris3DVoxel
+    from src.voxel.params import default_harris3d_params
 
-    # Real chair sample: (890, 1, 32, 32, 32) -> pick first sample, squeeze channel
+    synthetic_dataset = load_synthetic_voxel_dataset()
+    detector = Harris3DVoxel(default_harris3d_params())
+    synthetic_out = "outputs/figures/synthetic"
+    real_out = "outputs/figures/real"
+    os.makedirs(synthetic_out, exist_ok=True)
+    os.makedirs(real_out, exist_ok=True)
+    if not ONLY_REAL:
+        for name, vol in synthetic_dataset:
+            keypoints = detector.detect(vol)
+            print(f"Showing: {name} | keypoints: {len(keypoints)}")
+            if SHOW_PLOTS:
+                plot_voxels(
+                    [vol],
+                    titles=[f"{name}: 3D Volume + Keypoints"],
+                    keypoints_list=[keypoints],
+                    show=True,
+                    save_path=os.path.join(synthetic_out, f"{name}_volume.png"),
+                )
+
+    # Show real chair sample with detected keypoints
+    real = run_harris3d_real_chair()
     with gzip.open("data/Voxel/real/ModelNet10-dataset/chair.npy.gz", "rb") as f:
         chairs = np.load(f)
-    # Some samples are empty; pick the first non-empty one
-    idx = next(i for i in range(len(chairs)) if chairs[i, 0].any())
-    chair = chairs[idx, 0].astype(bool)  # (32, 32, 32)
+    idx = real["sample_index"]
+    chair = chairs[idx, 0].astype(bool)
+    keypoints = detector.detect(chair)
+    print(f"Showing: chair | keypoints: {len(keypoints)}")
+    if SHOW_PLOTS:
+        plot_voxels(
+            [chair],
+            titles=[f"ModelNet10 Chair sample {idx}: 3D Volume + Keypoints"],
+            keypoints_list=[keypoints],
+            show=True,
+            save_path=os.path.join(real_out, "chair_volume.png"),
+        )
 
-    # Real bunny pointcloud
-    pcd_bunny = np.asarray(
-        o3d.io.read_point_cloud("data/Pointcloud/real/bunny.ply").points
+    # Visualize a random sample from ModelNet10
+    random_sample = run_harris3d_random_modelnet_sample(
+        params=default_harris3d_params()
     )
-
-    plot_voxels(
-        [cube, chair],
-        titles=["Synthetic Cube", "Real Chair (ModelNet10)"],
-    )
-
-    plot_pointcloud(
-        [pcd_cube, pcd_bunny],
-        titles=["Synthetic Cube Pointcloud", "Stanford Bunny Pointcloud"],
-    )
+    sample_idx = random_sample["sample_index"]
+    sample = random_sample["sample"]
+    keypoints = random_sample["keypoints"]
+    print(f"Showing ModelNet10 sample {sample_idx} | keypoints: {len(keypoints)}")
+    if SHOW_PLOTS:
+        plot_voxels(
+            [sample],
+            titles=[f"ModelNet10 sample {sample_idx}: 3D Volume + Keypoints"],
+            keypoints_list=[keypoints],
+            show=True,
+            save_path=os.path.join(
+                real_out, f"modelnet_sample_{sample_idx}_volume.png"
+            ),
+        )
 
 
 if __name__ == "__main__":
