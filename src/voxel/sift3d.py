@@ -44,8 +44,11 @@ class SIFT3DVoxel(Detector3D):
         )
 
     def detect(self, data: np.ndarray) -> np.ndarray:
-        _ = self.run(data)
-        return np.empty((0, 3), dtype=np.float32)
+        result = self.run(data)
+        if result.extrema_global.shape[0] == 0:
+            return np.empty((0, 3), dtype=np.float32)
+        # Convert global extrema coordinates from (z, y, x) to (x, y, z).
+        return result.extrema_global[:, [2, 1, 0]].astype(np.float32)
 
     def _to_float_volume(self, volume_input: str | np.ndarray) -> np.ndarray:
         if isinstance(volume_input, str):
@@ -371,12 +374,17 @@ class SIFT3DVoxel(Detector3D):
             dtype=np.float64,
         )
 
-        if float(abs(np.linalg.det(hessian))) < singular_eps:
-            return None
-
         try:
             offset = -np.linalg.solve(hessian, grad)
         except np.linalg.LinAlgError:
+            # Near-singular Hessians are common in sparse voxel DoG volumes.
+            # Fall back to least-squares instead of rejecting outright.
+            offset, *_ = np.linalg.lstsq(hessian, -grad, rcond=None)
+
+        if not np.all(np.isfinite(offset)):
+            return None
+
+        if np.linalg.norm(offset) > (4.0 * offset_threshold):
             return None
 
         if np.any(np.abs(offset) > offset_threshold):

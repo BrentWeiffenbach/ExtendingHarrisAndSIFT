@@ -11,6 +11,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Circle
 from matplotlib.widgets import Slider
 from scipy.ndimage import map_coordinates
+from skimage.measure import marching_cubes
 
 
 def _as_xyz_points(points_like) -> np.ndarray:
@@ -95,7 +96,7 @@ def plot_voxels(
     surface_snap_keypoints: bool = True,
 ):
     """
-    Display one or more voxel grids side-by-side.
+    Display one or more voxel grids side-by-side using marching cubes for fast rendering.
 
     Parameters
     ----------
@@ -111,9 +112,30 @@ def plot_voxels(
     for i, vol in enumerate(volumes):
         ax = cast(Any, fig.add_subplot(1, n, i + 1, projection="3d"))
 
-        # Volumes are stored as (z, y, x), while matplotlib.voxels expects (x, y, z).
-        mask_xyz = np.transpose(vol.astype(bool), (2, 1, 0))
-        ax.voxels(mask_xyz, facecolors="steelblue", edgecolors=None, alpha=0.5)
+        # Use marching cubes for fast surface mesh extraction then trisurf rendering
+        vol_bool = np.asarray(vol).astype(bool)
+        if vol_bool.any():
+            # Pad volume so surface is closed at boundaries
+            padded = np.pad(
+                vol_bool.astype(np.float32), 1, mode="constant", constant_values=0
+            )
+            # Extract surface mesh; marching_cubes returns (verts, faces, normals, values)
+            # in (z,y,x) space
+            verts, faces, _, _ = marching_cubes(padded, level=0.5)
+            # Undo padding offset; coords are now in original (z,y,x) space
+            verts -= 1
+            # marching_cubes returns (z,y,x); convert to (x,y,z) for matplotlib 3D
+            # verts_zyx = verts, we want verts_xyz = [[x,y,z], ...]
+            # so x = verts[:, 2], y = verts[:, 1], z = verts[:, 0]
+            ax.plot_trisurf(
+                verts[:, 2],
+                verts[:, 1],
+                faces,
+                verts[:, 0],
+                color="steelblue",
+                alpha=0.5,
+                linewidth=0,
+            )
 
         if keypoints_list is not None and keypoints_list[i] is not None:
             kp = np.asarray(keypoints_list[i])
@@ -133,6 +155,9 @@ def plot_voxels(
                     depthshade=False,
                     zorder=5,
                 )
+
+        # Set consistent 45° isometric-ish view
+        ax.view_init(elev=30, azim=45)
 
         if titles is not None and i < len(titles):
             ax.set_title(titles[i])

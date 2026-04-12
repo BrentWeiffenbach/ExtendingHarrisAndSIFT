@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import gzip
 import random
 from pathlib import Path
 from typing import List, Tuple
 
 import numpy as np
 
+from src.common.io import ModelNetLoader, SyntheticVoxelLoader
 from src.common.visualization import plot_voxels
 from src.voxel.harris3d import Harris3DVoxel
 from src.voxel.params import Harris3DParams, default_harris3d_params
@@ -17,11 +17,8 @@ VolumeEntry = Tuple[str, np.ndarray]
 def load_synthetic_voxel_dataset(
     root: str = "data/Voxel/synthetic",
 ) -> List[VolumeEntry]:
-    base = Path(root)
-    volumes: List[VolumeEntry] = []
-    for path in sorted(base.glob("*.npy")):
-        volumes.append((path.stem, np.load(path).astype(bool)))
-    return volumes
+    """Load all synthetic voxel shapes. Delegates to SyntheticVoxelLoader."""
+    return SyntheticVoxelLoader(root).load_all()
 
 
 def run_harris3d_synthetic(
@@ -64,11 +61,14 @@ def run_harris3d_real_chair(
     cfg = params or default_harris3d_params()
     detector = Harris3DVoxel(cfg)
 
-    with gzip.open("data/Voxel/real/ModelNet10-dataset/chair.npy.gz", "rb") as f:
-        chairs = np.load(f)
+    modelnet_loader = ModelNetLoader(
+        "data/Voxel/real/ModelNet10-dataset/modelnet10.npy.gz"
+    )
+    # Find first non-empty chair sample
+    for idx, chair in modelnet_loader.load_sequential():
+        if chair.any():
+            break
 
-    idx = next(i for i in range(len(chairs)) if chairs[i, 0].any())
-    chair = chairs[idx, 0].astype(bool)
     keypoints = detector.detect(chair)
 
     out = Path(out_dir)
@@ -99,16 +99,15 @@ def run_harris3d_random_modelnet_sample(
     cfg = params or default_harris3d_params()
     detector = Harris3DVoxel(cfg)
 
-    modelnet_path = "data/Voxel/real/ModelNet10-dataset/modelnet10.npy.gz"
-    with gzip.open(modelnet_path, "rb") as f:
-        modelnet = np.load(f)
-
-    idx = (
-        sample_index
-        if sample_index is not None
-        else random.randint(0, modelnet.shape[0] - 1)
+    modelnet_loader = ModelNetLoader(
+        "data/Voxel/real/ModelNet10-dataset/modelnet10.npy.gz"
     )
-    sample = modelnet[idx, 0].astype(bool)
+
+    if sample_index is not None:
+        idx, sample = sample_index, modelnet_loader.load_by_index(sample_index)
+    else:
+        idx, sample = modelnet_loader.load_random()
+
     keypoints = detector.detect(sample)
 
     return {

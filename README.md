@@ -4,160 +4,67 @@ Extending Harris &amp; SIFT from 2D to 3D for CS545 at WPI
 
 This repository contains implementations and analyses of 3D keypoint detectors on both voxel grids and point clouds, including Harris 3D and SIFT 3D.
 
----
+## Usage
 
-## 🧩 Part A — Harris Corner Detector in 3D
+Use the two CLI entry points below for most experiments.
 
-### A1. 3D Harris on Voxel Grids
+### `main.py` (single run / interactive)
 
-**Goal:**  
-Extend the 2D Harris corner detector to a 3D volume (scalar field `I(x, y, z)`).
-
-**Steps:**
-1. **Compute Gradients:**  
-   Calculate derivatives in all three directions (`Ix`, `Iy`, `Iz`) using 3D Sobel filters or derivative-of-Gaussian.
-2. **Build 3D Structure Tensor:**  
-   Construct the local structure tensor and smooth it with a Gaussian to capture intensity variations in a neighborhood.
-3. **Cornerness Score:**  
-   Define a cornerness measure using eigenvalues (`λ1 ≥ λ2 ≥ λ3`).  
-   Example formula:  R = det(M) - k * trace(M)^3
-   - `k` typically between 0.04 and 0.1  
-  - Strong corners → large variation in all 3 directions
-4. **3D Non-Maximum Suppression (NMS):**  
-Keep only local maxima within a 3D neighborhood.
-5. **Visualization:**  
-Overlay detected points on slices, isosurfaces, or volume renderings.
-
-**Deliverables:**
-- Explanation of design choices (filters, σ, k, NMS window)  
-- Implementation + parameter values  
-- Visual results with captions  
-- Discussion on smoothing scale, sampling resolution, and anisotropy
-
-#### A1 Implementation Notes (Current Code)
-
-The voxel implementation lives in `src/voxel/harris3d.py` with defaults in
-`src/voxel/params.py`.
-
-- Gradients: Derivative-of-Gaussian (`gradient_sigma=0.6`)
-- Tensor smoothing: Gaussian on each structure-tensor term (`tensor_sigma=0.9`)
-- Cornerness: `R = det(M) - k * trace(M)^3` with `k=0.024`
-- NMS: 3D max filter with `nms_window=5` and border suppression (`border=1`)
-- NMS tie-break: greedy suppression removes plateau duplicates near one geometric corner
-- Thresholding: `threshold_rel=0.05` of the largest score after applying `response_mode`
-- Extrema mode: `response_mode="positive"` (suppresses surface/edge-like responses)
-- Output cap: `max_keypoints=None` (no hard cap in the default submission path)
-- Spatial balancing: `balanced_bins=(1, 1, 1)` (disabled by default)
-
-To make detections more selective, increase `nms_window` (larger 3D neighborhood) and/or set
-`max_keypoints` to a finite value for display-focused outputs.
-
-Anisotropy handling:
-- Parameters accept `spacing=(dx, dy, dz)` to account for non-uniform voxel size.
-- Smoothing sigmas are scaled per-axis, and gradients are normalized by spacing,
-  so responses are less biased when one axis has different physical sampling.
-
-To generate visual results and captions on synthetic voxel shapes:
+Run one detector on one input volume or image:
 
 ```bash
-python -m src.evaluation.evaluate_voxel
+# Harris on a synthetic voxel
+python main.py --detector harris --dimension 3d --synthetic-name cube --show
+
+# SIFT on a ModelNet sample
+python main.py --detector sift --dimension 3d --modelnet-index 100 --show
+
+# Save only (no UI)
+python main.py --detector sift --dimension 3d --modelnet-index 100 --no-show --output-dir /tmp
+
+# 2D SIFT on the default image in data/2d
+python main.py --detector sift --dimension 2d --show
 ```
 
-Generated artifacts:
-- `outputs/harris3d/*_volume.png`
-- `outputs/harris3d/captions.md`
-- `outputs/harris3d_real/chair_volume.png`
-- `outputs/harris3d_real/captions.md`
+Run demo pipelines:
 
----
+```bash
+# Default demo source
+python main.py --demo 3d-extrema
 
-### A2. 3D Harris on Point Clouds
+# Demo on a chosen synthetic shape
+python main.py --demo 3d-dog --synthetic-name torus
 
-**Goal:**  
-Adapt Harris-like detection to unstructured data (point clouds).
+# Demo on a chosen ModelNet sample
+python main.py --demo 3d-gaussian --modelnet-index 10
+```
 
-**Steps:**
-1. Define neighborhoods using either k-nearest neighbors (k-NN) or radius-based neighborhoods.
-2. Compute local covariance / structure tensor from neighbors.
-3. Define cornerness measure using eigenvalues.
-4. Apply NMS to suppress nearby points within a radius.
+Notes:
+- In 3D mode with `--show`, napari is used when available.
+- `--synthetic-name` and `--modelnet-index` are ignored for 2D detector mode.
 
-**Deliverables:**
-- Description of neighborhood and tensor computation  
-- Cornerness function + thresholds  
-- Keypoint visualizations on the point cloud  
-- Analysis of sensitivity to point density, noise, and outliers
+### `run_all.py` (batch runner)
 
----
+Run full or filtered batches over datasets:
 
-## 🧭 Part B — SIFT Keypoint Detection in 3D
+```bash
+# Everything (2D + 3D, Harris + SIFT)
+python run_all.py
 
-### B1. 3D SIFT on Voxel Grids
+# Only 3D SIFT
+python run_all.py --dimension 3d --detector sift
 
-**Goal:**  
-Extend SIFT scale-space detection to 3D volumes.
+# Only 2D Harris (currently prints skip messages)
+python run_all.py --dimension 2d --detector harris
+```
 
-**Steps:**
-1. Build a 3D Gaussian pyramid `G(x, y, z, σ)`.
-2. Compute Difference of Gaussians (DoG) by subtracting adjacent scales.
-3. Detect scale-space extrema by comparing each voxel with:
-- 26 neighbors in space  
-- Neighbors in adjacent scales
-4. (Optional) Refine keypoints for better location and scale accuracy.
-5. Discuss orientation: how to define 3D gradients/orientations.
+CLI filters:
+- `--dimension {2d,3d,all}`
+- `--detector {harris,sift,all}`
 
-**Deliverables:**
-- Method description + parameters (octaves, levels per octave, σ schedule)  
-- Implementation of extrema detection  
-- Visualizations  
-- Discussion on memory usage and computational cost
-
----
-
-### B2. SIFT-like Detection on Point Clouds
-
-**Goal:**  
-Create a multi-scale keypoint detector for point clouds.
-
-**Scale-space options:**
-- Increase neighborhood radius  
-- Convert to voxel grid (resampling)  
-- Graph-based diffusion (advanced/bonus)
-
-**Steps:**
-1. Build scale-space representation
-2. Define a DoG-like operator
-3. Detect extrema across scales
-4. Map detections back to original points
-
-**Deliverables:**
-- Method choice + justification  
-- Implementation + parameters  
-- Visualizations  
-- Comparison with voxel-based SIFT (B1)
-
----
-
-## 📊 Part C — Evaluation & Analysis
-
-**Datasets:**  
-Use multiple datasets, including at least one synthetic dataset.
-
-**Quantitative Metrics:**
-- Repeatability under rotation, noise, downsampling  
-- Stability of keypoint counts  
-- Localization error
-
-**Qualitative Analysis:**
-- Visual comparisons on volumes and point clouds
-
-**Comparisons:**
-- Grid-based vs point cloud methods  
-- Harris 3D vs SIFT 3D  
-- Parameter sensitivity: k, σ, neighborhood size
-
-**Additional Requirements:**
-- Plots and/or tables summarizing results  
-- Clear experimental setup for reproducibility
+Outputs are written under:
+- `outputs/run_all/3d/harris/voxel/*.png`
+- `outputs/run_all/3d/sift/voxel/*.png`
+- `outputs/run_all/2d/sift/image/*.png`
 
 ---

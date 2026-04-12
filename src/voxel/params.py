@@ -40,7 +40,7 @@ class SIFT2DParams:
 class SIFT3DParams:
     num_octaves: int = 4
     scales_per_octave: int = 5
-    base_sigma: float = 1.6
+    base_sigma: float = 1.2
     min_size: int = 8
     downsample_factor: int = 2
     downsample_sigma: float = 1.0
