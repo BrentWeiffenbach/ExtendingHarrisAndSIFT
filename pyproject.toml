@@ -8,7 +8,7 @@ dependencies = [
     "matplotlib>=3.7.5",
     "napari>=0.5.0",
     "open3d>=0.19.0",
-    "opencv-python>=4.13.0.92",
+    "opencv-python-headless>=4.13.0.92",  # Changed to -headless for WSL
     "pyqt5>=5.15.0",
     "scipy>=1.10.0",
 ]
