@@ -25,7 +25,12 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from demos.sift_pipeline import DEMO_REGISTRY, run_demo
-from src.common.io import SyntheticVoxelLoader, ModelNetLoader, load_image, load_pointcloud
+from src.common.io import (
+    SyntheticVoxelLoader,
+    ModelNetLoader,
+    load_image,
+    load_pointcloud,
+)
 from src.common.visualization import (
     plot_pointcloud,
     plot_voxels,
@@ -222,7 +227,7 @@ def _run_pc_detector(detector_name: str, pts: np.ndarray) -> np.ndarray:
             num_octaves=3,
             scales_per_octave=4,
             base_radius=0.08,
-            contrast_threshold=1e-4,
+            contrast_threshold=1e-2,
         )
         return SIFTGeomPC(params).detect(pts)
     elif detector_name == "sift-voxel":
@@ -279,7 +284,7 @@ def main() -> None:
         type=str,
         default=None,
         help="Path to a PLY point cloud file. If omitted, uses --synthetic-name from "
-             "data/Pointcloud/synthetic/ (default shape: sphere).",
+        "data/Pointcloud/synthetic/ (default shape: sphere).",
     )
 
     # Data source (one of: --synthetic-name, --modelnet-index, none for default)
@@ -390,8 +395,18 @@ def main() -> None:
             pcd = load_pointcloud(args.pc_file)
             name = Path(args.pc_file).stem
         else:
-            pc_shapes = ["cone", "cube", "cuboid", "cylinder", "pyramid", "sphere", "torus"]
-            shape = args.synthetic_name if args.synthetic_name in pc_shapes else "sphere"
+            pc_shapes = [
+                "cone",
+                "cube",
+                "cuboid",
+                "cylinder",
+                "pyramid",
+                "sphere",
+                "torus",
+            ]
+            shape = (
+                args.synthetic_name if args.synthetic_name in pc_shapes else "sphere"
+            )
             pcd = load_pointcloud(f"data/Pointcloud/synthetic/{shape}.ply")
             name = shape
         pts = np.asarray(pcd.points, dtype=np.float32)
