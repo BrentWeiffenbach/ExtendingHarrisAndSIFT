@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import random
 from pathlib import Path
 from typing import List, Tuple
 
@@ -65,6 +64,8 @@ def run_harris3d_real_chair(
         "data/Voxel/real/ModelNet10-dataset/modelnet10.npy.gz"
     )
     # Find first non-empty chair sample
+    idx = -1
+    chair = None
     for idx, chair in modelnet_loader.load_sequential():
         if chair.any():
             break

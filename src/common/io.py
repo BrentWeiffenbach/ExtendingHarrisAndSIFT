@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import gzip
 from pathlib import Path
-from typing import Iterator, Tuple
-import open3d as o3d
+from typing import Iterator
 
 import cv2
 import numpy as np
+import open3d as o3d
 
 SYNTHETIC_ROOT = "data/Voxel/synthetic"
 MODELNET_ROOT = "data/Voxel/real/ModelNet10-dataset"
@@ -83,6 +83,73 @@ class SyntheticVoxelLoader:
                 f"expected (32, 32, 32)"
             )
         return volume
+
+
+class SyntheticPointCloudLoader:
+    """Load synthetic point cloud shapes from PLY files."""
+
+    SHAPES = ["cone", "cube", "cuboid", "cylinder", "pyramid", "sphere", "torus"]
+
+    def __init__(self, root: str = POINTCLOUD_ROOT + "/synthetic"):
+        self.root = Path(root)
+
+    def load_all(self) -> list[tuple[str, np.ndarray]]:
+        result = []
+        for name in self.SHAPES:
+            pts = self.load_by_name(name)
+            result.append((name, pts))
+        return result
+
+    def load_by_name(self, name: str) -> np.ndarray:
+        if name not in self.SHAPES:
+            raise ValueError(f"Unknown shape: {name}. Must be one of {self.SHAPES}")
+        path = self.root / f"{name}.ply"
+        if not path.exists():
+            raise FileNotFoundError(f"Point cloud file not found: {path}")
+        pcd = o3d.io.read_point_cloud(str(path))
+        return np.asarray(pcd.points, dtype=np.float64)
+
+
+class RealPointCloudLoader:
+    """Load real point cloud samples from all PLY files in a directory.
+
+    Mirrors the interface of SyntheticPointCloudLoader so the two can be
+    used interchangeably in batch runners.  Any ``.ply`` file present in
+    *root* is treated as a sample; the stem of the filename is the name.
+
+    The expected directory is ``data/Pointcloud/real/``, pre-populated by
+    ``data/Pointcloud/generate_real.py``.
+    """
+
+    def __init__(self, root: str = POINTCLOUD_ROOT + "/real"):
+        self.root = Path(root)
+
+    def load_all(self) -> list[tuple[str, np.ndarray]]:
+        """Load all PLY files found in the root directory.
+
+        Returns
+        -------
+        list[tuple[str, np.ndarray]]
+            List of (name, points) pairs, sorted by name.  *points* is
+            a float64 (N, 3) array.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the root directory does not exist.
+        """
+        if not self.root.exists():
+            raise FileNotFoundError(
+                f"Real point cloud directory not found: {self.root}\n"
+                "Run data/Pointcloud/generate_real.py to populate it."
+            )
+        result: list[tuple[str, np.ndarray]] = []
+        for ply_path in sorted(self.root.glob("*.ply")):
+            pcd = o3d.io.read_point_cloud(str(ply_path))
+            pts = np.asarray(pcd.points, dtype=np.float64)
+            if pts.shape[0] > 0:
+                result.append((ply_path.stem, pts))
+        return result
 
 
 class ModelNetLoader:

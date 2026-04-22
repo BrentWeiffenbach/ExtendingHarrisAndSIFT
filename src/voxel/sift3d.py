@@ -162,7 +162,6 @@ class SIFT3DVoxel(Detector3D):
                 next_vol = octave_dogs[dog_idx + 1]
                 z_max, y_max, x_max = curr_vol.shape
                 sigma_low, sigma_high, _ = dog_sigma_pairs[octave_idx][dog_idx]
-                sigma_char = float(np.sqrt(max(1e-12, sigma_low * sigma_high)))
 
                 for z in range(border, z_max - border):
                     for y in range(border, y_max - border):
@@ -295,7 +294,6 @@ class SIFT3DVoxel(Detector3D):
         yy = int(y)
         xx = int(x)
         offset_threshold = float(self.params.refinement_offset_threshold)
-        singular_eps = float(self.params.refinement_singular_eps)
         if s <= 0 or s >= len(octave_dogs) - 1:
             return None
 

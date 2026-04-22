@@ -10,14 +10,17 @@ Opens napari with a control panel where you can:
 Usage:
   python playground.py
 """
+
 from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
 from typing import Any
 
+import magicgui.widgets as mw
+import napari
 import numpy as np
-
+from napari.qt.threading import thread_worker
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QCheckBox,
@@ -32,17 +35,17 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-import magicgui.widgets as mw
-
-import napari
-from napari.qt.threading import thread_worker
-
-from src.common.io import ModelNetLoader, SyntheticVoxelLoader, load_image, load_pointcloud
+from src.common.io import (
+    ModelNetLoader,
+    SyntheticVoxelLoader,
+    load_image,
+    load_pointcloud,
+)
 from src.common.visualization import rasterize_extrema_blobs_3d
 from src.pointcloud.params import SIFTGeomPCParams, SIFTRadiiPCParams, SIFTVoxelPCParams
 from src.pointcloud.sift_pc import SIFTGeomPC, SIFTRadiiPC, SIFTVoxelPC
 from src.voxel.harris3d import Harris3DVoxel
-from src.voxel.params import SIFT2DParams, SIFT3DParams, Harris3DParams
+from src.voxel.params import Harris3DParams, SIFT2DParams, SIFT3DParams
 from src.voxel.sift2d import SIFT2D
 from src.voxel.sift3d import SIFT3DVoxel
 
@@ -80,6 +83,7 @@ def _algo_key(dimension: str, algorithm: str) -> str:
 # Parameter widget helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_param_widgets(
     params_instance: Any, prefix: str = ""
 ) -> tuple[list, dict[str, Any]]:
@@ -110,8 +114,12 @@ def _make_param_widgets(
         elif isinstance(val, float):
             step = max(abs(val) * 0.1, 1e-9)
             w = mw.FloatSpinBox(
-                name=key, value=val, label=label,
-                step=step, min=-1e9, max=1e9,
+                name=key,
+                value=val,
+                label=label,
+                step=step,
+                min=-1e9,
+                max=1e9,
             )
             widgets.append(w)
             widget_dict[key] = w
@@ -128,11 +136,21 @@ def _make_param_widgets(
                 if isinstance(sub_val, float):
                     step = max(abs(sub_val) * 0.1, 1e-9)
                     w = mw.FloatSpinBox(
-                        name=sub_key, value=sub_val, label=sub_lbl,
-                        step=step, min=-1e9, max=1e9,
+                        name=sub_key,
+                        value=sub_val,
+                        label=sub_lbl,
+                        step=step,
+                        min=-1e9,
+                        max=1e9,
                     )
                 else:
-                    w = mw.SpinBox(name=sub_key, value=int(sub_val), label=sub_lbl, min=0, max=100_000)
+                    w = mw.SpinBox(
+                        name=sub_key,
+                        value=int(sub_val),
+                        label=sub_lbl,
+                        min=0,
+                        max=100_000,
+                    )
                 widgets.append(w)
                 widget_dict[sub_key] = w
 
@@ -145,7 +163,9 @@ def _make_param_widgets(
     return widgets, widget_dict
 
 
-def _read_params(widget_dict: dict[str, Any], params_class: type, prefix: str = "") -> Any:
+def _read_params(
+    widget_dict: dict[str, Any], params_class: type, prefix: str = ""
+) -> Any:
     """Reconstruct a params dataclass from widget_dict values."""
     kwargs: dict[str, Any] = {}
 
@@ -160,13 +180,21 @@ def _read_params(widget_dict: dict[str, Any], params_class: type, prefix: str = 
         key = f"{prefix}.{f.name}" if prefix else f.name
 
         if isinstance(default, bool):
-            kwargs[f.name] = bool(widget_dict[key].value) if key in widget_dict else default
+            kwargs[f.name] = (
+                bool(widget_dict[key].value) if key in widget_dict else default
+            )
         elif isinstance(default, int):
-            kwargs[f.name] = int(widget_dict[key].value) if key in widget_dict else default
+            kwargs[f.name] = (
+                int(widget_dict[key].value) if key in widget_dict else default
+            )
         elif isinstance(default, float):
-            kwargs[f.name] = float(widget_dict[key].value) if key in widget_dict else default
+            kwargs[f.name] = (
+                float(widget_dict[key].value) if key in widget_dict else default
+            )
         elif isinstance(default, str):
-            kwargs[f.name] = str(widget_dict[key].value) if key in widget_dict else default
+            kwargs[f.name] = (
+                str(widget_dict[key].value) if key in widget_dict else default
+            )
         elif isinstance(default, (tuple, list)):
             parts = []
             for i, sub_val in enumerate(default):
@@ -183,6 +211,7 @@ def _read_params(widget_dict: dict[str, Any], params_class: type, prefix: str = 
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
+
 
 def _data_sources(dimension: str) -> list[str]:
     if dimension == "2D":
@@ -204,7 +233,9 @@ def _load_data(dimension: str, source_name: str) -> np.ndarray:
     elif dimension == "3D-Voxel":
         if source_name.startswith("modelnet_"):
             idx = int(source_name.split("_")[1])
-            loader = ModelNetLoader("data/Voxel/real/ModelNet10-dataset/modelnet10.npy.gz")
+            loader = ModelNetLoader(
+                "data/Voxel/real/ModelNet10-dataset/modelnet10.npy.gz"
+            )
             return loader.load_by_index(idx).astype(np.float32)
         return SyntheticVoxelLoader().load_by_name(source_name).astype(np.float32)
 
@@ -220,13 +251,20 @@ def _load_data(dimension: str, source_name: str) -> np.ndarray:
 # Detector runner
 # ---------------------------------------------------------------------------
 
-def _run_detector(dimension: str, algorithm: str, params: Any, data: np.ndarray) -> dict:
+
+def _run_detector(
+    dimension: str, algorithm: str, params: Any, data: np.ndarray
+) -> dict:
     """Run the selected detector; always uses run() for intermediary access."""
     key = _algo_key(dimension, algorithm)
 
     if key == "2D/SIFT":
         result = SIFT2D(params).run(data)
-        kp = result.extrema_global[:, :2].astype(np.float32) if result.extrema_global.shape[0] > 0 else np.empty((0, 2), np.float32)
+        kp = (
+            result.extrema_global[:, :2].astype(np.float32)
+            if result.extrema_global.shape[0] > 0
+            else np.empty((0, 2), np.float32)
+        )
         return {
             "keypoints": kp,
             "raw": data,
@@ -249,8 +287,16 @@ def _run_detector(dimension: str, algorithm: str, params: Any, data: np.ndarray)
 
     elif key == "3D-Voxel/SIFT":
         result = SIFT3DVoxel(params).run(data)
-        extrema = result.extrema_global.astype(np.float32) if result.extrema_global.shape[0] > 0 else np.empty((0, 7), np.float32)
-        kp = extrema[:, [2, 1, 0]] if extrema.shape[0] > 0 else np.empty((0, 3), np.float32)
+        extrema = (
+            result.extrema_global.astype(np.float32)
+            if result.extrema_global.shape[0] > 0
+            else np.empty((0, 7), np.float32)
+        )
+        kp = (
+            extrema[:, [2, 1, 0]]
+            if extrema.shape[0] > 0
+            else np.empty((0, 3), np.float32)
+        )
         return {
             "keypoints": kp,
             "raw": data,
@@ -263,7 +309,11 @@ def _run_detector(dimension: str, algorithm: str, params: Any, data: np.ndarray)
 
     elif key == "3D-PointCloud/SIFT-Geom":
         result = SIFTGeomPC(params).run(data)
-        kp5 = result.keypoints.astype(np.float32) if result.keypoints.shape[0] > 0 else np.empty((0, 5), np.float32)
+        kp5 = (
+            result.keypoints.astype(np.float32)
+            if result.keypoints.shape[0] > 0
+            else np.empty((0, 5), np.float32)
+        )
         return {
             "keypoints": kp5[:, :3],
             "keypoints_full": kp5,
@@ -279,7 +329,11 @@ def _run_detector(dimension: str, algorithm: str, params: Any, data: np.ndarray)
 
     elif key == "3D-PointCloud/SIFT-Radii":
         result = SIFTRadiiPC(params).run(data)
-        kp5 = result.keypoints.astype(np.float32) if result.keypoints.shape[0] > 0 else np.empty((0, 5), np.float32)
+        kp5 = (
+            result.keypoints.astype(np.float32)
+            if result.keypoints.shape[0] > 0
+            else np.empty((0, 5), np.float32)
+        )
         return {
             "keypoints": kp5[:, :3],
             "keypoints_full": kp5,
@@ -314,10 +368,11 @@ def _run_detector(dimension: str, algorithm: str, params: Any, data: np.ndarray)
 # Layer management
 # ---------------------------------------------------------------------------
 
+
 def _clear_pg_layers(viewer: napari.Viewer) -> None:
-    to_remove = [l for l in viewer.layers if l.metadata.get(_PG_TAG)]
-    for l in to_remove:
-        viewer.layers.remove(l)
+    to_remove = [layer for layer in viewer.layers if layer.metadata.get(_PG_TAG)]
+    for layer in to_remove:
+        viewer.layers.remove(layer)
 
 
 def _pg_meta() -> dict:
@@ -341,40 +396,72 @@ def _update_layers(
         viewer.dims.ndisplay = 2
         viewer.add_image(raw, name="image", colormap="gray", metadata=pg)
         if kp.shape[0] > 0:
-            viewer.add_points(kp[:, :2], name="keypoints", size=6,
-                              face_color="red", symbol="disc", metadata=pg)
+            viewer.add_points(
+                kp[:, :2],
+                name="keypoints",
+                size=6,
+                face_color="red",
+                symbol="disc",
+                metadata=pg,
+            )
         if show_inter:
             _add_inter_2d(viewer, inter, pg)
 
     elif dimension == "3D-Voxel":
         viewer.dims.ndisplay = 3
-        viewer.add_image(raw.astype(np.float32), name="volume", colormap="gray",
-                         rendering="mip", depiction="volume", metadata=pg)
+        viewer.add_image(
+            raw.astype(np.float32),
+            name="volume",
+            colormap="gray",
+            rendering="mip",
+            depiction="volume",
+            metadata=pg,
+        )
         extrema_global = result.get("extrema_global")
-        if algorithm == "SIFT" and extrema_global is not None and extrema_global.shape[0] > 0:
+        if (
+            algorithm == "SIFT"
+            and extrema_global is not None
+            and extrema_global.shape[0] > 0
+        ):
             blob_labels, centers = rasterize_extrema_blobs_3d(
                 raw.shape, extrema_global, radius_factor=1.0, max_blobs=2000
             )
-            viewer.add_labels(blob_labels, name="keypoint_blobs", opacity=0.55, metadata=pg)
+            viewer.add_labels(
+                blob_labels, name="keypoint_blobs", opacity=0.55, metadata=pg
+            )
             if centers.shape[0] > 0:
-                viewer.add_points(centers, name="keypoints", size=4,
-                                  face_color="yellow", metadata=pg)
+                viewer.add_points(
+                    centers, name="keypoints", size=4, face_color="yellow", metadata=pg
+                )
         elif kp.shape[0] > 0:
             kp_zyx = kp[:, [2, 1, 0]].astype(np.float32)
-            viewer.add_points(kp_zyx, name="keypoints", size=4,
-                              face_color="red", metadata=pg)
+            viewer.add_points(
+                kp_zyx, name="keypoints", size=4, face_color="red", metadata=pg
+            )
         if show_inter:
             _add_inter_3d_voxel(viewer, inter, algorithm, pg)
 
     else:  # 3D-PointCloud
         viewer.dims.ndisplay = 3
         pc_zyx = raw[:, [2, 1, 0]].astype(np.float32)
-        viewer.add_points(pc_zyx, name="point_cloud", size=0.008,
-                          face_color="white", opacity=0.2, metadata=pg)
+        viewer.add_points(
+            pc_zyx,
+            name="point_cloud",
+            size=0.008,
+            face_color="white",
+            opacity=0.2,
+            metadata=pg,
+        )
         if kp.shape[0] > 0:
             kp_zyx = kp[:, [2, 1, 0]].astype(np.float32)
-            viewer.add_points(kp_zyx, name="keypoints", size=0.05,
-                              face_color="red", opacity=0.95, metadata=pg)
+            viewer.add_points(
+                kp_zyx,
+                name="keypoints",
+                size=0.05,
+                face_color="red",
+                opacity=0.95,
+                metadata=pg,
+            )
         if show_inter:
             _add_inter_3d_pc(viewer, inter, pg)
 
@@ -382,50 +469,98 @@ def _update_layers(
 def _add_inter_2d(viewer: napari.Viewer, inter: dict, pg: dict) -> None:
     for o, octave in enumerate(inter.get("gaussian_pyramid", [])):
         for s, img in enumerate(octave):
-            viewer.add_image(img.astype(np.float32), name=f"gauss_o{o}_s{s}",
-                             colormap="gray", visible=False, metadata=pg)
+            viewer.add_image(
+                img.astype(np.float32),
+                name=f"gauss_o{o}_s{s}",
+                colormap="gray",
+                visible=False,
+                metadata=pg,
+            )
     for o, octave in enumerate(inter.get("dog_pyramid", [])):
         for d, img in enumerate(octave):
-            viewer.add_image(img.astype(np.float32), name=f"dog_o{o}_d{d}",
-                             colormap="bwr", visible=False, metadata=pg)
+            viewer.add_image(
+                img.astype(np.float32),
+                name=f"dog_o{o}_d{d}",
+                colormap="bwr",
+                visible=False,
+                metadata=pg,
+            )
 
 
-def _add_inter_3d_voxel(viewer: napari.Viewer, inter: dict, algorithm: str, pg: dict) -> None:
+def _add_inter_3d_voxel(
+    viewer: napari.Viewer, inter: dict, algorithm: str, pg: dict
+) -> None:
     if algorithm == "Harris":
         resp = inter.get("response")
         if resp is not None:
-            viewer.add_image(resp.astype(np.float32), name="harris_response",
-                             colormap="viridis", opacity=0.6, visible=False, metadata=pg)
+            viewer.add_image(
+                resp.astype(np.float32),
+                name="harris_response",
+                colormap="viridis",
+                opacity=0.6,
+                visible=False,
+                metadata=pg,
+            )
         return
 
     for o, octave in enumerate(inter.get("gaussian_pyramid", [])):
         for s, vol in enumerate(octave):
-            viewer.add_image(vol.astype(np.float32), name=f"gauss_o{o}_s{s}",
-                             colormap="gray", rendering="mip", depiction="volume",
-                             visible=False, metadata=pg)
+            viewer.add_image(
+                vol.astype(np.float32),
+                name=f"gauss_o{o}_s{s}",
+                colormap="gray",
+                rendering="mip",
+                depiction="volume",
+                visible=False,
+                metadata=pg,
+            )
     for o, octave in enumerate(inter.get("dog_pyramid", [])):
         for d, vol in enumerate(octave):
-            viewer.add_image(vol.astype(np.float32), name=f"dog_o{o}_d{d}",
-                             colormap="bwr", rendering="mip", depiction="volume",
-                             visible=False, metadata=pg)
+            viewer.add_image(
+                vol.astype(np.float32),
+                name=f"dog_o{o}_d{d}",
+                colormap="bwr",
+                rendering="mip",
+                depiction="volume",
+                visible=False,
+                metadata=pg,
+            )
 
 
 def _add_inter_3d_pc(viewer: napari.Viewer, inter: dict, pg: dict) -> None:
     voxel_vol = inter.get("voxel_volume")
     if voxel_vol is not None:
-        viewer.add_image(voxel_vol.astype(np.float32), name="voxel_occupancy",
-                         colormap="gray", rendering="mip", depiction="volume",
-                         visible=False, metadata=pg)
+        viewer.add_image(
+            voxel_vol.astype(np.float32),
+            name="voxel_occupancy",
+            colormap="gray",
+            rendering="mip",
+            depiction="volume",
+            visible=False,
+            metadata=pg,
+        )
         for o, octave in enumerate(inter.get("gaussian_pyramid", [])):
             for s, vol in enumerate(octave):
-                viewer.add_image(vol.astype(np.float32), name=f"gauss_o{o}_s{s}",
-                                 colormap="gray", rendering="mip", depiction="volume",
-                                 visible=False, metadata=pg)
+                viewer.add_image(
+                    vol.astype(np.float32),
+                    name=f"gauss_o{o}_s{s}",
+                    colormap="gray",
+                    rendering="mip",
+                    depiction="volume",
+                    visible=False,
+                    metadata=pg,
+                )
         for o, octave in enumerate(inter.get("dog_pyramid", [])):
             for d, vol in enumerate(octave):
-                viewer.add_image(vol.astype(np.float32), name=f"dog_o{o}_d{d}",
-                                 colormap="bwr", rendering="mip", depiction="volume",
-                                 visible=False, metadata=pg)
+                viewer.add_image(
+                    vol.astype(np.float32),
+                    name=f"dog_o{o}_d{d}",
+                    colormap="bwr",
+                    rendering="mip",
+                    depiction="volume",
+                    visible=False,
+                    metadata=pg,
+                )
         return
 
     signal_name = inter.get("signal_name", "signal")
@@ -447,12 +582,16 @@ def _add_inter_3d_pc(viewer: napari.Viewer, inter: dict, pg: dict) -> None:
             r = oct_radii[s]
             lbl = f"{short_sig} o={o} s={s}" + (f" r={r:.3f}" if r is not None else "")
             viewer.add_points(
-                pts_zyx, name=lbl,
+                pts_zyx,
+                name=lbl,
                 features={"signal": sig},
-                face_color="signal", face_colormap="plasma",
+                face_color="signal",
+                face_colormap="plasma",
                 face_contrast_limits=(d_min, d_max),
-                size=0.015, opacity=0.85,
-                visible=first_density, metadata=pg,
+                size=0.015,
+                opacity=0.85,
+                visible=first_density,
+                metadata=pg,
             )
             first_density = False
 
@@ -462,18 +601,23 @@ def _add_inter_3d_pc(viewer: napari.Viewer, inter: dict, pg: dict) -> None:
             dog = np.asarray(dog, dtype=np.float32)
             vmax = float(np.percentile(np.abs(dog), 99)) or 1.0
             viewer.add_points(
-                pts_zyx, name=f"DoG o={o} d={d}",
+                pts_zyx,
+                name=f"DoG o={o} d={d}",
                 features={"dog": dog},
-                face_color="dog", face_colormap="bwr",
+                face_color="dog",
+                face_colormap="bwr",
                 face_contrast_limits=(-vmax, vmax),
-                size=0.015, opacity=0.85,
-                visible=False, metadata=pg,
+                size=0.015,
+                opacity=0.85,
+                visible=False,
+                metadata=pg,
             )
 
 
 # ---------------------------------------------------------------------------
 # PlaygroundPanel — dock widget
 # ---------------------------------------------------------------------------
+
 
 class PlaygroundPanel(QWidget):
     def __init__(self, viewer: napari.Viewer) -> None:
@@ -648,6 +792,7 @@ class PlaygroundPanel(QWidget):
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     viewer = napari.Viewer(title="Detector Playground", ndisplay=3)

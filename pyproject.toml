@@ -12,3 +12,9 @@ dependencies = [
     "pyqt5>=5.15.0",
     "scipy>=1.10.0",
 ]
+
+[tool.ruff]
+exclude = ["notebooks/*.ipynb"]
+
+[tool.ruff.lint]
+ignore = ["E501"]

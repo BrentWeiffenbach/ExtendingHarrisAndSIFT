@@ -63,11 +63,11 @@ def make_cone(radius=0.45, height=0.9, tip_up=True):
     r = radius * SIZE / 2.0
     # Map z in [-h, h] to a local t in [0, 1] from base to apex
     if tip_up:
-        t = (z + h) / (2.0 * h)           # 0 at bottom, 1 at top
+        t = (z + h) / (2.0 * h)  # 0 at bottom, 1 at top
     else:
         t = (h - z) / (2.0 * h)
     t = np.clip(t, 0, 1)
-    r_at_z = r * (1.0 - t)                # radius shrinks toward apex
+    r_at_z = r * (1.0 - t)  # radius shrinks toward apex
     return (x**2 + y**2 <= r_at_z**2) & (np.abs(z) <= h)
 
 
@@ -79,7 +79,7 @@ def make_torus(major_r=0.35, minor_r=0.15):
     x, y, z = _grid()
     R = major_r * SIZE / 2.0
     r = minor_r * SIZE / 2.0
-    dist_to_ring = (np.sqrt(x**2 + y**2) - R)**2 + z**2
+    dist_to_ring = (np.sqrt(x**2 + y**2) - R) ** 2 + z**2
     return dist_to_ring <= r**2
 
 
@@ -89,19 +89,19 @@ def make_pyramid(base=0.7, height=0.8):
     h = height * SIZE / 2.0
     half_b = base * SIZE / 2.0
     # z runs from -h (base) to +h (apex)
-    t = np.clip((z + h) / (2.0 * h), 0, 1)   # 0 at base, 1 at apex
+    t = np.clip((z + h) / (2.0 * h), 0, 1)  # 0 at base, 1 at apex
     half_at_z = half_b * (1.0 - t)
     return (np.abs(x) <= half_at_z) & (np.abs(y) <= half_at_z) & (np.abs(z) <= h)
 
 
 SHAPES = {
-    "cube":     make_cube,
-    "cuboid":   make_cuboid,
-    "sphere":   make_sphere,
+    "cube": make_cube,
+    "cuboid": make_cuboid,
+    "sphere": make_sphere,
     "cylinder": make_cylinder,
-    "cone":     make_cone,
-    "torus":    make_torus,
-    "pyramid":  make_pyramid,
+    "cone": make_cone,
+    "torus": make_torus,
+    "pyramid": make_pyramid,
 }
 
 
@@ -112,7 +112,9 @@ def main():
         np.save(path, voxel)
         filled = voxel.sum()
         total = voxel.size
-        print(f"Saved {path}  shape={voxel.shape}  filled={filled}/{total} ({100*filled/total:.1f}%)")
+        print(
+            f"Saved {path}  shape={voxel.shape}  filled={filled}/{total} ({100 * filled / total:.1f}%)"
+        )
 
 
 if __name__ == "__main__":

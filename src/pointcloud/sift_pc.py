@@ -5,7 +5,12 @@ from scipy.spatial import KDTree
 import open3d as o3d
 
 from src.common.base_detector import Detector3D
-from src.pointcloud.params import SIFTGeomPCParams, SIFTRadiiPCParams, SIFTRadiiPCResult, SIFTVoxelPCParams
+from src.pointcloud.params import (
+    SIFTGeomPCParams,
+    SIFTRadiiPCParams,
+    SIFTRadiiPCResult,
+    SIFTVoxelPCParams,
+)
 from src.voxel.sift3d import SIFT3DVoxel
 
 
@@ -32,10 +37,16 @@ class SIFTRadiiPC(Detector3D):
 
         density_pyramid, radii_pyramid, points_per_octave = self.build_scale_space(pts)
         dog_pyramid, dog_radius_pairs = self.compute_dog(density_pyramid, radii_pyramid)
-        extrema_by_octave = self.detect_extrema(dog_pyramid, dog_radius_pairs, points_per_octave)
+        extrema_by_octave = self.detect_extrema(
+            dog_pyramid, dog_radius_pairs, points_per_octave
+        )
 
         all_kp = [e for e in extrema_by_octave if e.shape[0] > 0]
-        keypoints = np.vstack(all_kp).astype(np.float32) if all_kp else np.empty((0, 5), dtype=np.float32)
+        keypoints = (
+            np.vstack(all_kp).astype(np.float32)
+            if all_kp
+            else np.empty((0, 5), dtype=np.float32)
+        )
 
         return SIFTRadiiPCResult(
             points_per_octave=points_per_octave,
@@ -65,7 +76,7 @@ class SIFTRadiiPC(Detector3D):
             for scale in range(self.params.scales_per_octave):
                 r = (
                     self.params.base_radius
-                    * (self.params.radius_growth_factor ** octave)
+                    * (self.params.radius_growth_factor**octave)
                     * (2.0 ** (scale / self.params.scales_per_octave))
                 )
                 density = self._compute_density(current_pts, tree, r)
@@ -153,7 +164,9 @@ class SIFTRadiiPC(Detector3D):
                     is_max = val > max(float(prev_dog[i]), float(next_dog[i]))
 
                     # Spatial NMS
-                    nbr_indices = tree.query_ball_point(pts[i].astype(np.float64), r=nms_r)
+                    nbr_indices = tree.query_ball_point(
+                        pts[i].astype(np.float64), r=nms_r
+                    )
                     nbr_indices_excl = [j for j in nbr_indices if j != i]
 
                     if nbr_indices_excl:
@@ -170,14 +183,16 @@ class SIFTRadiiPC(Detector3D):
                     if offset is None:
                         continue
 
-                    r_refined = r_char * (2.0 ** offset)
-                    candidates.append((
-                        float(pts[i, 0]),
-                        float(pts[i, 1]),
-                        float(pts[i, 2]),
-                        float(r_refined),
-                        float(refined_response),
-                    ))
+                    r_refined = r_char * (2.0**offset)
+                    candidates.append(
+                        (
+                            float(pts[i, 0]),
+                            float(pts[i, 1]),
+                            float(pts[i, 2]),
+                            float(r_refined),
+                            float(refined_response),
+                        )
+                    )
 
             if candidates:
                 extrema_by_octave.append(np.array(candidates, dtype=np.float32))
@@ -201,7 +216,9 @@ class SIFTRadiiPC(Detector3D):
     ) -> np.ndarray:
         density = np.zeros(len(points), dtype=np.float32)
         two_r2 = 2.0 * radius * radius
-        neighbor_lists = tree.query_ball_point(points.astype(np.float64), r=radius, workers=-1)
+        neighbor_lists = tree.query_ball_point(
+            points.astype(np.float64), r=radius, workers=-1
+        )
 
         for i, nbrs in enumerate(neighbor_lists):
             if len(nbrs) < self.params.min_neighbors:
@@ -269,7 +286,11 @@ class SIFTVoxelPC(Detector3D):
             if result.extrema_global.shape[0] > 0
             else np.empty((0, 3), dtype=np.float32)
         )
-        keypoints_physical = self._to_physical(kp_xyz_voxel, min_corner) if kp_xyz_voxel.shape[0] > 0 else np.empty((0, 3), dtype=np.float32)
+        keypoints_physical = (
+            self._to_physical(kp_xyz_voxel, min_corner)
+            if kp_xyz_voxel.shape[0] > 0
+            else np.empty((0, 3), dtype=np.float32)
+        )
         return {
             "volume": volume,
             "min_corner": min_corner,
@@ -281,16 +302,16 @@ class SIFTVoxelPC(Detector3D):
         min_corner = points.min(axis=0)
         max_corner = points.max(axis=0)
 
-        shape_xyz = np.ceil(
-            (max_corner - min_corner) / self.params.voxel_size
-        ).astype(int).clip(4, None)
+        shape_xyz = (
+            np.ceil((max_corner - min_corner) / self.params.voxel_size)
+            .astype(int)
+            .clip(4, None)
+        )
 
         # Volume stored as (z, y, x) = (D, H, W)
         volume = np.zeros((shape_xyz[2], shape_xyz[1], shape_xyz[0]), dtype=np.float32)
 
-        indices = np.floor(
-            (points - min_corner) / self.params.voxel_size
-        ).astype(int)
+        indices = np.floor((points - min_corner) / self.params.voxel_size).astype(int)
         # Clip to valid range
         indices[:, 0] = indices[:, 0].clip(0, shape_xyz[0] - 1)
         indices[:, 1] = indices[:, 1].clip(0, shape_xyz[1] - 1)
@@ -328,10 +349,14 @@ class SIFTGeomPC(SIFTRadiiPC):
 
     # --- override the scalar-field computation only ----------------------------
 
-    def _compute_density(self, points: np.ndarray, tree: KDTree, radius: float) -> np.ndarray:
+    def _compute_density(
+        self, points: np.ndarray, tree: KDTree, radius: float
+    ) -> np.ndarray:
         return self._compute_geometry(points, tree, radius)
 
-    def _compute_geometry(self, points: np.ndarray, tree: KDTree, radius: float) -> np.ndarray:
+    def _compute_geometry(
+        self, points: np.ndarray, tree: KDTree, radius: float
+    ) -> np.ndarray:
         """Return the scale-normalised smallest covariance eigenvalue for each point.
 
         For each point i the Gaussian-weighted covariance of its neighbours is
@@ -343,13 +368,15 @@ class SIFTGeomPC(SIFTRadiiPC):
         feature = np.zeros(n, dtype=np.float32)
         r2 = float(radius * radius)
         two_r2 = 2.0 * r2
-        neighbor_lists = tree.query_ball_point(points.astype(np.float64), r=radius, workers=-1)
+        neighbor_lists = tree.query_ball_point(
+            points.astype(np.float64), r=radius, workers=-1
+        )
 
         for i, nbrs in enumerate(neighbor_lists):
             if len(nbrs) < self.params.min_neighbors:
                 continue
             nbr_pts = points[nbrs].astype(np.float64)
-            diffs = nbr_pts - points[i].astype(np.float64)   # (k, 3)
+            diffs = nbr_pts - points[i].astype(np.float64)  # (k, 3)
             sq_dists = np.einsum("ij,ij->i", diffs, diffs)
             weights = np.exp(-sq_dists / two_r2)
             w_sum = weights.sum()
@@ -357,7 +384,7 @@ class SIFTGeomPC(SIFTRadiiPC):
                 continue
             # Gaussian-weighted covariance centred at p_i, scale-normalised by r²
             w_norm = weights / w_sum
-            cov = (diffs.T * w_norm) @ diffs / r2   # (3, 3)
+            cov = (diffs.T * w_norm) @ diffs / r2  # (3, 3)
             # eigvalsh returns eigenvalues in ascending order (λ_min first)
             eigvals = np.linalg.eigvalsh(cov)
             feature[i] = float(max(eigvals[0], 0.0))
