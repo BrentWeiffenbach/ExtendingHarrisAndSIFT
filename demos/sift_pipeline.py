@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import numpy as np
+from matplotlib import pyplot as plt
 
-from src.common.io import ModelNetLoader, SyntheticVoxelLoader
+from src.common.io import ModelNetLoader, SyntheticVoxelLoader, load_pointcloud
 from src.common.visualization import (
     plot_dog_scale_space,
     plot_dog_scale_space_3d,
@@ -14,16 +16,118 @@ from src.common.visualization import (
     plot_gaussian_scale_space,
     plot_gaussian_scale_space_3d,
     plot_gaussian_scale_space_3d_interactive,
+    plot_pointcloud,
     plot_sift2d_orientation_views,
     plot_voxel_storage_layout,
+    plot_voxels,
     rasterize_extrema_blobs_3d,
     view_dog_scale_space_3d_napari,
     view_extrema_blobs_3d_napari,
     view_gaussian_scale_space_3d_napari,
+    view_pc_radii_napari,
 )
+from src.pointcloud.params import SIFTGeomPCParams, SIFTRadiiPCParams, SIFTVoxelPCParams
+from src.pointcloud.sift_pc import SIFTGeomPC, SIFTRadiiPC, SIFTVoxelPC
 from src.voxel.params import SIFT2DParams, SIFT3DParams
 from src.voxel.sift2d import SIFT2D
 from src.voxel.sift3d import SIFT3DVoxel
+
+PC_SYNTHETIC_ROOT = "data/Pointcloud/synthetic"
+PC_SYNTHETIC_SHAPES = [
+    "cone",
+    "cube",
+    "cuboid",
+    "cylinder",
+    "pyramid",
+    "sphere",
+    "torus",
+]
+
+
+def _load_synthetic_pc(name: str | None) -> tuple[np.ndarray, str]:
+    shape = name if name in PC_SYNTHETIC_SHAPES else "sphere"
+    path = Path(PC_SYNTHETIC_ROOT) / f"{shape}.ply"
+    pcd = load_pointcloud(str(path))
+    pts = np.asarray(pcd.points, dtype=np.float32)
+    # Normalize to [0, 1] bounding box so default params work regardless of scale
+    lo, hi = pts.min(axis=0), pts.max(axis=0)
+    rng = hi - lo
+    rng[rng == 0] = 1.0
+    pts = (pts - lo) / rng
+    return pts, shape
+
+
+def _plot_pc_scale_space(
+    points_per_octave: list[np.ndarray],
+    density_pyramid: list[list[np.ndarray]],
+    radii_pyramid: list[list[float]],
+    max_octaves: int = 3,
+    max_scales: int = 4,
+) -> None:
+    n_oct = min(len(density_pyramid), max_octaves)
+    n_sc = min(len(density_pyramid[0]) if density_pyramid else 0, max_scales)
+    if n_oct == 0 or n_sc == 0:
+        return
+
+    fig, axes = plt.subplots(n_oct, n_sc, figsize=(3.5 * n_sc, 3 * n_oct))
+    if n_oct == 1:
+        axes = [axes]
+    if n_sc == 1:
+        axes = [[row] for row in axes]
+
+    for o in range(n_oct):
+        pts = points_per_octave[o]
+        for s in range(n_sc):
+            ax = axes[o][s]
+            density = density_pyramid[o][s]
+            r = radii_pyramid[o][s]
+            sc = ax.scatter(pts[:, 0], pts[:, 1], c=density, s=2, cmap="plasma")
+            plt.colorbar(sc, ax=ax, fraction=0.04, pad=0.04)
+            ax.set_title(f"Oct {o}, Scale {s}\nr={r:.3f}", fontsize=8)
+            ax.set_aspect("equal")
+            ax.axis("off")
+
+    fig.suptitle("Point Cloud Density Scale-Space (Gaussian KDE)", fontsize=11)
+    plt.tight_layout()
+    plt.show()
+
+
+def _plot_pc_dog(
+    points_per_octave: list[np.ndarray],
+    dog_pyramid: list[list[np.ndarray]],
+    dog_radius_pairs: list[list[tuple[float, float]]],
+    max_octaves: int = 3,
+    max_dogs: int = 3,
+) -> None:
+    n_oct = min(len(dog_pyramid), max_octaves)
+    n_dog = min(len(dog_pyramid[0]) if dog_pyramid else 0, max_dogs)
+    if n_oct == 0 or n_dog == 0:
+        return
+
+    fig, axes = plt.subplots(n_oct, n_dog, figsize=(3.5 * n_dog, 3 * n_oct))
+    if n_oct == 1:
+        axes = [axes]
+    if n_dog == 1:
+        axes = [[row] for row in axes]
+
+    for o in range(n_oct):
+        pts = points_per_octave[o]
+        for d in range(min(n_dog, len(dog_pyramid[o]))):
+            ax = axes[o][d]
+            dog = dog_pyramid[o][d]
+            r_lo, r_hi = dog_radius_pairs[o][d]
+            vmax = float(np.abs(dog).max()) or 1.0
+            sc = ax.scatter(
+                pts[:, 0], pts[:, 1], c=dog, s=2, cmap="RdBu_r", vmin=-vmax, vmax=vmax
+            )
+            plt.colorbar(sc, ax=ax, fraction=0.04, pad=0.04)
+            ax.set_title(f"Oct {o}, DoG {d}\nr=[{r_lo:.3f},{r_hi:.3f}]", fontsize=8)
+            ax.set_aspect("equal")
+            ax.axis("off")
+
+    fig.suptitle("Point Cloud DoG Scale-Space", fontsize=11)
+    plt.tight_layout()
+    plt.show()
 
 
 def _resolve_3d_demo_volume(
@@ -224,6 +328,408 @@ def run_voxel_storage_demo(
     plot_voxel_storage_layout(volume)
 
 
+def run_pc_radii_demo(
+    synthetic_name: str | None = None,
+    modelnet_index: int | None = None,
+) -> None:
+    """Demo: radii-based SIFT on a point cloud.
+
+    Shows the Gaussian KDE density scale-space, the DoG pyramid, and detected keypoints.
+    Use --synthetic-name to pick a shape (cone/cube/cuboid/cylinder/pyramid/sphere/torus).
+    """
+    pts, name = _load_synthetic_pc(synthetic_name)
+    print(f"Loaded '{name}' point cloud: {pts.shape[0]} points")
+
+    params = SIFTRadiiPCParams(
+        num_octaves=3,
+        scales_per_octave=4,
+        base_radius=0.08,
+        contrast_threshold=0.0005,
+    )
+    detector = SIFTRadiiPC(params)
+    result = detector.run(pts)
+    print(f"Detected {result.keypoints.shape[0]} keypoints")
+
+    _plot_pc_scale_space(
+        result.points_per_octave,
+        result.density_pyramid,
+        result.radii_pyramid,
+    )
+
+    dog_radius_pairs: list[list[tuple[float, float]]] = []
+    for o, octave_dogs in enumerate(result.dog_pyramid):
+        pairs: list[tuple[float, float]] = []
+        radii = result.radii_pyramid[o]
+        for i in range(len(octave_dogs)):
+            pairs.append((radii[i], radii[i + 1]))
+        dog_radius_pairs.append(pairs)
+
+    _plot_pc_dog(
+        result.points_per_octave,
+        result.dog_pyramid,
+        dog_radius_pairs,
+    )
+
+    kp = result.keypoints[:, :3] if result.keypoints.shape[0] > 0 else None
+    plot_pointcloud(
+        [pts], titles=[f"{name} — SIFTRadiiPC keypoints"], keypoints_list=[kp]
+    )
+
+
+def run_pc_radii_napari_demo(
+    synthetic_name: str | None = None,
+    modelnet_index: int | None = None,
+) -> None:
+    """Demo: radii-based SIFT on a point cloud — interactive napari viewer.
+
+    Shows the Gaussian KDE density scale-space and DoG pyramid as 5D volumetric
+    layers (octave × scale × z × y × x) with napari sliders, plus detected
+    keypoints as 3D spheres sized by their scale radius.
+    Use --synthetic-name to pick a shape (cone/cube/cuboid/cylinder/pyramid/sphere/torus).
+    """
+    pts, name = _load_synthetic_pc(synthetic_name)
+    print(f"Loaded '{name}' point cloud: {pts.shape[0]} points")
+
+    params = SIFTRadiiPCParams(
+        num_octaves=3,
+        scales_per_octave=4,
+        base_radius=0.02,
+        contrast_threshold=0.0005,
+    )
+    detector = SIFTRadiiPC(params)
+    result = detector.run(pts)
+    print(f"Detected {result.keypoints.shape[0]} keypoints")
+
+    kp = result.keypoints if result.keypoints.shape[0] > 0 else None
+    view_pc_radii_napari(
+        points=pts,
+        points_per_octave=result.points_per_octave,
+        density_pyramid=result.density_pyramid,
+        radii_pyramid=result.radii_pyramid,
+        dog_pyramid=result.dog_pyramid,
+        keypoints=kp,
+    )
+
+
+def run_pc_geom_demo(
+    synthetic_name: str | None = None,
+    modelnet_index: int | None = None,
+) -> None:
+    """Demo: geometry-based scale-space SIFT on a point cloud (matplotlib).
+
+    Uses the smallest eigenvalue of the Gaussian-weighted local covariance (normalised
+    by r²) as the scalar field.  Non-trivial DoG responses arise from 3-D shape
+    complexity (corners, edges) rather than point density.
+    Use --synthetic-name to pick a shape — try 'cube' or 'pyramid' for clear results.
+    """
+    pts, name = _load_synthetic_pc(synthetic_name)
+    print(f"Loaded '{name}' point cloud: {pts.shape[0]} points")
+
+    params = SIFTGeomPCParams(
+        num_octaves=3,
+        scales_per_octave=4,
+        base_radius=0.5,
+        contrast_threshold=1e-4,
+    )
+    detector = SIFTGeomPC(params)
+    result = detector.run(pts)
+    print(f"Detected {result.keypoints.shape[0]} keypoints")
+
+    _plot_pc_scale_space(
+        result.points_per_octave,
+        result.density_pyramid,
+        result.radii_pyramid,
+    )
+
+    dog_radius_pairs: list[list[tuple[float, float]]] = []
+    for o, octave_dogs in enumerate(result.dog_pyramid):
+        pairs: list[tuple[float, float]] = []
+        radii = result.radii_pyramid[o]
+        for i in range(len(octave_dogs)):
+            pairs.append((radii[i], radii[i + 1]))
+        dog_radius_pairs.append(pairs)
+
+    _plot_pc_dog(result.points_per_octave, result.dog_pyramid, dog_radius_pairs)
+
+    kp = result.keypoints[:, :3] if result.keypoints.shape[0] > 0 else None
+    plot_pointcloud(
+        [pts], titles=[f"{name} — SIFTGeomPC keypoints"], keypoints_list=[kp]
+    )
+
+
+def run_pc_geom_napari_demo(
+    synthetic_name: str | None = None,
+    modelnet_index: int | None = None,
+) -> None:
+    """Demo: geometry-based scale-space SIFT on a point cloud — interactive napari.
+
+    Each (octave, scale) layer is coloured by λ_min of the local covariance (plasma
+    colourmap); the DoG layers use bwr.  Compare with pc-radii-napari to see how the
+    geometric signal concentrates on edges/corners while KDE density is uniform.
+    Use --synthetic-name to pick a shape — try 'cube' or 'pyramid' for clear results.
+    """
+    pts, name = _load_synthetic_pc(synthetic_name)
+    print(f"Loaded '{name}' point cloud: {pts.shape[0]} points")
+
+    params = SIFTGeomPCParams(
+        num_octaves=3,
+        scales_per_octave=4,
+        base_radius=1,
+        contrast_threshold=1e-4,
+    )
+    detector = SIFTGeomPC(params)
+    result = detector.run(pts)
+    print(f"Detected {result.keypoints.shape[0]} keypoints")
+
+    kp = result.keypoints if result.keypoints.shape[0] > 0 else None
+    view_pc_radii_napari(
+        points=pts,
+        points_per_octave=result.points_per_octave,
+        density_pyramid=result.density_pyramid,
+        radii_pyramid=result.radii_pyramid,
+        dog_pyramid=result.dog_pyramid,
+        keypoints=kp,
+        signal_name="λ_min geometry",
+    )
+
+
+def run_pc_geom_steps_demo(
+    synthetic_name: str | None = None,
+    modelnet_index: int | None = None,
+) -> None:
+    """Step-by-step walkthrough of the geometry-based scale-space SIFT pipeline.
+
+    Produces four sequential matplotlib figures:
+      1. KDE density vs λ_min at the same radius — why geometry works where density fails
+      2. λ_min scale-space progression across scales in octave 0
+      3. DoG of λ_min for each scale pair in octave 0
+      4. Detected keypoints overlaid on the point cloud
+
+    Best with a shape that has distinct corners: 'cube', 'pyramid', 'cuboid'.
+    """
+    pts, name = _load_synthetic_pc(synthetic_name)
+    print(f"Loaded '{name}': {pts.shape[0]} points")
+
+    base_radius = 0.08
+    num_octaves = 2
+    scales_per_octave = 4
+
+    geom_params = SIFTGeomPCParams(
+        num_octaves=num_octaves,
+        scales_per_octave=scales_per_octave,
+        base_radius=base_radius,
+        contrast_threshold=1e-4,
+    )
+    kde_params = SIFTRadiiPCParams(
+        num_octaves=num_octaves,
+        scales_per_octave=scales_per_octave,
+        base_radius=base_radius,
+        contrast_threshold=0.0005,
+    )
+    print("Running SIFTGeomPC...")
+    geom_result = SIFTGeomPC(geom_params).run(pts)
+    print("Running SIFTRadiiPC (for comparison)...")
+    kde_result = SIFTRadiiPC(kde_params).run(pts)
+    print(
+        f"Geometry keypoints: {geom_result.keypoints.shape[0]}  "
+        f"KDE keypoints: {kde_result.keypoints.shape[0]}"
+    )
+
+    # Subsample for display so 3-D scatter stays responsive
+    rng = np.random.default_rng(0)
+    disp_idx = rng.choice(len(pts), min(5000, len(pts)), replace=False)
+    pts_d = pts[disp_idx]
+    elev, azim = 25, 45
+
+    # ---- Figure 1: KDE density vs λ_min side-by-side at scale 0 / octave 0 ---
+    r0 = geom_result.radii_pyramid[0][0]
+    kde_s0 = kde_result.density_pyramid[0][0][disp_idx]
+    geom_s0 = geom_result.density_pyramid[0][0][disp_idx]
+
+    fig = plt.figure(figsize=(13, 5))
+    fig.suptitle(
+        f"Step 1 — KDE density vs λ_min geometry signal  ('{name}', r={r0:.3f})\n"
+        "Geometry concentrates at corners/edges; KDE is nearly uniform on smooth surfaces.",
+        fontsize=10,
+    )
+    ax1 = fig.add_subplot(121, projection="3d")
+    vk = float(np.percentile(kde_s0, 99)) or 1.0
+    sc1 = ax1.scatter(
+        pts_d[:, 0], pts_d[:, 1], pts_d[:, 2],
+        c=kde_s0, s=2, cmap="plasma", vmin=0, vmax=vk, alpha=0.7,
+    )
+    ax1.set_title(
+        f"KDE density (SIFTRadiiPC)\nrange [{kde_s0.min():.3f}, {kde_s0.max():.3f}]", fontsize=9
+    )
+    ax1.view_init(elev=elev, azim=azim)
+    plt.colorbar(sc1, ax=ax1, fraction=0.03, pad=0.12)
+
+    ax2 = fig.add_subplot(122, projection="3d")
+    vg = float(np.percentile(geom_s0, 99)) or 1e-4
+    sc2 = ax2.scatter(
+        pts_d[:, 0], pts_d[:, 1], pts_d[:, 2],
+        c=geom_s0, s=2, cmap="plasma", vmin=0, vmax=vg, alpha=0.7,
+    )
+    ax2.set_title(
+        f"λ_min geometry (SIFTGeomPC)\nrange [{geom_s0.min():.5f}, {geom_s0.max():.5f}]",
+        fontsize=9,
+    )
+    ax2.view_init(elev=elev, azim=azim)
+    plt.colorbar(sc2, ax=ax2, fraction=0.03, pad=0.12)
+    plt.tight_layout()
+    plt.show()
+
+    # ---- Figure 2: λ_min scale-space progression (octave 0) ------------------
+    oct0_pts = geom_result.points_per_octave[0]
+    oct0_geom = geom_result.density_pyramid[0]
+    oct0_radii = geom_result.radii_pyramid[0]
+    n_sc = len(oct0_geom)
+
+    all_vals = np.concatenate(oct0_geom)
+    g_vmin = float(all_vals.min())
+    g_vmax = float(np.percentile(all_vals, 99))
+    if g_vmax <= g_vmin:
+        g_vmax = g_vmin + 1e-6
+
+    oct0_idx = rng.choice(len(oct0_pts), min(5000, len(oct0_pts)), replace=False)
+    oct0_d = oct0_pts[oct0_idx]
+
+    fig = plt.figure(figsize=(4 * n_sc, 4.5))
+    fig.suptitle(
+        f"Step 2 — λ_min scale-space (octave 0, {len(oct0_pts)} pts)\n"
+        "Shared colour limits across all scales. Corners stay bright; flat faces stay dark.",
+        fontsize=10,
+    )
+    for s_idx, (geom, r) in enumerate(zip(oct0_geom, oct0_radii)):
+        ax = fig.add_subplot(1, n_sc, s_idx + 1, projection="3d")
+        sc = ax.scatter(
+            oct0_d[:, 0], oct0_d[:, 1], oct0_d[:, 2],
+            c=geom[oct0_idx], s=2, cmap="plasma",
+            vmin=g_vmin, vmax=g_vmax, alpha=0.8,
+        )
+        ax.set_title(
+            f"Scale {s_idx}  r={r:.3f}\nμ={geom.mean():.4f}  σ={geom.std():.4f}", fontsize=8
+        )
+        ax.view_init(elev=elev, azim=azim)
+        ax.tick_params(labelsize=6)
+        plt.colorbar(sc, ax=ax, fraction=0.03, pad=0.12)
+    plt.tight_layout()
+    plt.show()
+
+    # ---- Figure 3: DoG pyramid (octave 0) ------------------------------------
+    oct0_dogs = geom_result.dog_pyramid[0]
+    n_dog = len(oct0_dogs)
+
+    if n_dog == 0:
+        print("No DoG layers in octave 0 — skipping Figure 3 (need scales_per_octave >= 2)")
+    else:
+        fig = plt.figure(figsize=(4 * n_dog, 4.5))
+        fig.suptitle(
+            "Step 3 — DoG of λ_min (octave 0)\n"
+            "Red = λ_min grew with scale (geometry strengthens); "
+            "Blue = shrinks. Interior DoG layers are extremum candidates.",
+            fontsize=10,
+        )
+        for d_idx, dog in enumerate(oct0_dogs):
+            ax = fig.add_subplot(1, n_dog, d_idx + 1, projection="3d")
+            v = float(np.percentile(np.abs(dog), 99)) or 1e-6
+            sc = ax.scatter(
+                oct0_d[:, 0], oct0_d[:, 1], oct0_d[:, 2],
+                c=dog[oct0_idx], s=2, cmap="RdBu_r",
+                vmin=-v, vmax=v, alpha=0.8,
+            )
+            r_lo, r_hi = oct0_radii[d_idx], oct0_radii[d_idx + 1]
+            n_extrema = int((np.abs(dog) > v * 0.5).sum())
+            ax.set_title(
+                f"DoG {d_idx}  r=[{r_lo:.3f}→{r_hi:.3f}]\n"
+                f"max|DoG|={np.abs(dog).max():.5f}  strong pts≈{n_extrema}",
+                fontsize=8,
+            )
+            ax.view_init(elev=elev, azim=azim)
+            ax.tick_params(labelsize=6)
+            plt.colorbar(sc, ax=ax, fraction=0.03, pad=0.12)
+        plt.tight_layout()
+        plt.show()
+
+    # ---- Figure 4: Detected keypoints ----------------------------------------
+    kp = geom_result.keypoints
+    fig = plt.figure(figsize=(7, 6))
+    fig.suptitle(
+        f"Step 4 — Detected keypoints ({kp.shape[0]} found)\n"
+        "Color = |DoG response|; marker size ∝ detected scale radius",
+        fontsize=10,
+    )
+    ax = fig.add_subplot(111, projection="3d")
+    ax.scatter(
+        pts_d[:, 0], pts_d[:, 1], pts_d[:, 2],
+        c="lightsteelblue", s=1, alpha=0.25, label="point cloud",
+    )
+    if kp.shape[0] > 0:
+        sizes = np.clip(kp[:, 3] * 800, 30, 300)
+        sc = ax.scatter(
+            kp[:, 0], kp[:, 1], kp[:, 2],
+            c=np.abs(kp[:, 4]), s=sizes, cmap="hot",
+            edgecolors="red", linewidths=0.6,
+            alpha=0.95, zorder=5, label="keypoints",
+        )
+        plt.colorbar(sc, ax=ax, fraction=0.03, pad=0.1, label="|response|")
+    else:
+        print("No keypoints found — try lowering contrast_threshold")
+    ax.view_init(elev=elev, azim=azim)
+    ax.legend(fontsize=8, loc="upper left")
+    plt.tight_layout()
+    plt.show()
+
+
+def run_pc_voxel_demo(
+    synthetic_name: str | None = None,
+    modelnet_index: int | None = None,
+) -> None:
+    """Demo: voxelization-based SIFT on a point cloud.
+
+    Voxelizes the point cloud, runs SIFT3DVoxel, then projects keypoints back to
+    physical coordinates and shows both the voxel volume and the point cloud.
+    Use --synthetic-name to pick a shape (cone/cube/cuboid/cylinder/pyramid/sphere/torus).
+    """
+    pts, name = _load_synthetic_pc(synthetic_name)
+    print(f"Loaded '{name}' point cloud: {pts.shape[0]} points")
+
+    params = SIFTVoxelPCParams(voxel_size=0.05)
+    detector = SIFTVoxelPC(params)
+    run_result = detector.run(pts)
+
+    volume = run_result["volume"]
+    kp_physical = run_result["keypoints"]
+    sift3d_result = run_result["sift3d_result"]
+    print(f"Voxelized to {volume.shape}, detected {kp_physical.shape[0]} keypoints")
+
+    # Show DoG scale-space of the voxelized volume
+    plot_dog_scale_space_3d(
+        sift3d_result.dog_pyramid,
+        sift3d_result.dog_sigma_pairs,
+        slice_axis=0,
+    )
+
+    # Show voxelized volume (keypoints in voxel coords for overlay)
+    if sift3d_result.extrema_global.shape[0] > 0:
+        kp_voxel_xyz = sift3d_result.extrema_global[:, [2, 1, 0]].astype(np.int32)
+    else:
+        kp_voxel_xyz = np.empty((0, 3), dtype=np.int32)
+    plot_voxels(
+        [volume],
+        titles=[f"{name} voxelized (voxel_size={params.voxel_size})"],
+        keypoints_list=[kp_voxel_xyz],
+    )
+
+    # Show point cloud with physical-space keypoints
+    kp_plot = kp_physical if kp_physical.shape[0] > 0 else None
+    plot_pointcloud(
+        [pts],
+        titles=[f"{name} — SIFTVoxelPC keypoints"],
+        keypoints_list=[kp_plot],
+    )
+
+
 DEMO_REGISTRY = {
     "2d": run_2d_demo,
     "2d-signature": run_2d_signature_demo,
@@ -235,6 +741,12 @@ DEMO_REGISTRY = {
     "3d-extrema": run_3d_extrema_demo,
     "3d-extrema-napari": run_3d_extrema_napari_demo,
     "voxel-storage": run_voxel_storage_demo,
+    "pc-radii": run_pc_radii_demo,
+    "pc-radii-napari": run_pc_radii_napari_demo,
+    "pc-geom": run_pc_geom_demo,
+    "pc-geom-napari": run_pc_geom_napari_demo,
+    "pc-geom-steps": run_pc_geom_steps_demo,
+    "pc-voxel": run_pc_voxel_demo,
 }
 
 
