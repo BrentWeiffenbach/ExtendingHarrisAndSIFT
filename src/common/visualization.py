@@ -1212,6 +1212,161 @@ def plot_sift2d_orientation_views(original_image: np.ndarray, signature) -> None
     plt.show()
 
 
+def _rasterize_pc_values(
+    pts: np.ndarray,
+    values: np.ndarray,
+    grid_shape: tuple[int, int, int],
+    min_corner: np.ndarray,
+    voxel_size: float,
+) -> np.ndarray:
+    """Splat per-point scalar values onto a (D, H, W) voxel grid by averaging."""
+    vol = np.zeros(grid_shape, dtype=np.float32)
+    count = np.zeros(grid_shape, dtype=np.int32)
+    D, H, W = grid_shape
+    idx = np.floor((pts - min_corner) / voxel_size).astype(int)
+    ix = np.clip(idx[:, 0], 0, W - 1)
+    iy = np.clip(idx[:, 1], 0, H - 1)
+    iz = np.clip(idx[:, 2], 0, D - 1)
+    np.add.at(vol, (iz, iy, ix), values)
+    np.add.at(count, (iz, iy, ix), 1)
+    nz = count > 0
+    vol[nz] /= count[nz]
+    return vol
+
+
+def view_pc_radii_napari(
+    points: np.ndarray,
+    points_per_octave: list[np.ndarray],
+    density_pyramid: list[list[np.ndarray]],
+    radii_pyramid: list[list[float]],
+    dog_pyramid: list[list[np.ndarray]],
+    keypoints: Optional[np.ndarray] = None,
+    signal_name: str = "KDE density",
+) -> None:
+    """Interactive napari viewer for the radii-based SIFT point cloud pipeline.
+
+    Adds one Points layer per (octave, scale) for the scalar field heatmap and one
+    per (octave, DoG index) for the DoG heatmap — each colored by its scalar value —
+    plus a raw point cloud layer and a keypoints layer.  Toggle layers in the napari
+    panel to compare octaves/scales.
+
+    Parameters
+    ----------
+    points : np.ndarray
+        (N, 3) original normalized point cloud.
+    points_per_octave : list[np.ndarray]
+        FPS-subsampled point sets per octave.
+    density_pyramid : list[list[np.ndarray]]
+        Per-octave, per-scale scalar field arrays (KDE density or geometry measure).
+    radii_pyramid : list[list[float]]
+        Corresponding query radii.
+    dog_pyramid : list[list[np.ndarray]]
+        Per-octave DoG arrays (one fewer than density per octave).
+    keypoints : np.ndarray | None
+        (K, 5) keypoints: x, y, z, radius, response.
+    signal_name : str
+        Human-readable name shown in layer labels and the overlay text (default:
+        ``"KDE density"``).  Pass e.g. ``"λ_min geometry"`` for the geometric variant.
+    """
+    try:
+        napari = importlib.import_module("napari")
+    except ImportError as exc:
+        raise ImportError(
+            "napari is not installed. Install with: uv pip install napari pyqt5"
+        ) from exc
+
+    pts = np.asarray(points, dtype=np.float32)
+    # napari Points use (z, y, x) ordering
+    pts_zyx = pts[:, [2, 1, 0]].astype(np.float32)
+
+    viewer = napari.Viewer(ndisplay=3)
+
+    # Raw point cloud — small white dots for spatial context
+    viewer.add_points(
+        pts_zyx,
+        name="Raw Point Cloud",
+        size=0.008,
+        face_color="white",
+        opacity=0.2,
+    )
+
+    # Scalar field scale-space: one Points layer per (octave, scale)
+    # Only the first layer is visible by default; toggle others in the layer panel.
+    first_density = True
+    short_sig = signal_name.replace(" ", "_")
+    for o_idx, (octave_densities, octave_radii) in enumerate(
+        zip(density_pyramid, radii_pyramid)
+    ):
+        oct_pts = np.asarray(points_per_octave[o_idx], dtype=np.float32)
+        oct_zyx = oct_pts[:, [2, 1, 0]]
+        for s_idx, (dens, r) in enumerate(zip(octave_densities, octave_radii)):
+            dens = np.asarray(dens, dtype=np.float32)
+            d_min, d_max = float(dens.min()), float(dens.max())
+            if d_max <= d_min:
+                d_max = d_min + 1.0
+            viewer.add_points(
+                oct_zyx,
+                features={"signal": dens},
+                face_color="signal",
+                face_colormap="plasma",
+                face_contrast_limits=(d_min, d_max),
+                name=f"{short_sig} o={o_idx} s={s_idx} r={r:.3f}",
+                size=0.015,
+                opacity=0.85,
+                visible=first_density,
+            )
+            first_density = False
+
+    # DoG pyramid: one Points layer per (octave, dog index) — all hidden by default
+    for o_idx, octave_dogs in enumerate(dog_pyramid):
+        oct_pts = np.asarray(points_per_octave[o_idx], dtype=np.float32)
+        oct_zyx = oct_pts[:, [2, 1, 0]]
+        for d_idx, dog in enumerate(octave_dogs):
+            dog = np.asarray(dog, dtype=np.float32)
+            vmax = float(np.percentile(np.abs(dog), 99)) or 1.0
+            viewer.add_points(
+                oct_zyx,
+                features={"dog": dog},
+                face_color="dog",
+                face_colormap="bwr",
+                face_contrast_limits=(-vmax, vmax),
+                name=f"DoG o={o_idx} d={d_idx}",
+                size=0.015,
+                opacity=0.85,
+                visible=False,
+            )
+
+    # Keypoints — sized by detected scale radius
+    if keypoints is not None and keypoints.shape[0] > 0:
+        kp = np.asarray(keypoints, dtype=np.float32)
+        kp_zyx = kp[:, [2, 1, 0]]
+        # radius col is physical units; scale to a visible napari point size
+        sizes = np.clip(kp[:, 3] * 3.0, 0.01, 0.2)
+
+        kp_kwargs: dict[str, Any] = {
+            "data": kp_zyx,
+            "name": "Keypoints",
+            "size": sizes,
+            "face_color": "red",
+            "opacity": 0.95,
+        }
+        add_pts_params = inspect.signature(viewer.add_points).parameters
+        if "edge_color" in add_pts_params:
+            kp_kwargs["edge_color"] = "white"
+        elif "border_color" in add_pts_params:
+            kp_kwargs["border_color"] = "white"
+        viewer.add_points(**kp_kwargs)
+
+    viewer.scale_bar.visible = True
+    viewer.text_overlay.visible = True
+    viewer.text_overlay.text = (
+        f"{signal_name} layers: scalar field at each octave/scale (plasma = low→high).\n"
+        "DoG layers: difference of Gaussians (bwr = negative→positive).\n"
+        "Toggle layers in the panel to compare scales. Red = keypoints."
+    )
+    napari.run()
+
+
 def plot_voxel_storage_layout(
     volume: np.ndarray,
     max_points: int = 3000,

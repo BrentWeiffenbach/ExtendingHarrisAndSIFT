@@ -25,12 +25,15 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from demos.sift_pipeline import DEMO_REGISTRY, run_demo
-from src.common.io import SyntheticVoxelLoader, ModelNetLoader, load_image
+from src.common.io import SyntheticVoxelLoader, ModelNetLoader, load_image, load_pointcloud
 from src.common.visualization import (
+    plot_pointcloud,
     plot_voxels,
     rasterize_extrema_blobs_3d,
     view_extrema_blobs_3d_napari,
 )
+from src.pointcloud.params import SIFTGeomPCParams, SIFTRadiiPCParams, SIFTVoxelPCParams
+from src.pointcloud.sift_pc import SIFTGeomPC, SIFTRadiiPC, SIFTVoxelPC
 from src.voxel.harris3d import Harris3DVoxel
 from src.voxel.params import default_harris3d_params, SIFT3DParams, SIFT2DParams
 from src.voxel.sift2d import SIFT2D
@@ -184,6 +187,51 @@ def _run_2d_detector(detector_name: str, img: np.ndarray) -> np.ndarray:
     return keypoints
 
 
+def _normalize_pointcloud(pts: np.ndarray) -> np.ndarray:
+    lo, hi = pts.min(axis=0), pts.max(axis=0)
+    rng = hi - lo
+    rng[rng == 0] = 1.0
+    return (pts - lo) / rng
+
+
+def _run_pc_detector(detector_name: str, pts: np.ndarray) -> np.ndarray:
+    """Run a point-cloud SIFT detector.
+
+    Parameters
+    ----------
+    detector_name : str
+        'sift-radii' or 'sift-voxel'
+    pts : np.ndarray
+        (N, 3) point cloud in normalized [0, 1] coordinates
+
+    Returns
+    -------
+    np.ndarray
+        (K, 3) keypoints in (x, y, z)
+    """
+    if detector_name == "sift-radii":
+        params = SIFTRadiiPCParams(
+            num_octaves=3,
+            scales_per_octave=4,
+            base_radius=0.08,
+            contrast_threshold=0.0005,
+        )
+        return SIFTRadiiPC(params).detect(pts)
+    elif detector_name == "sift-geom":
+        params = SIFTGeomPCParams(
+            num_octaves=3,
+            scales_per_octave=4,
+            base_radius=0.08,
+            contrast_threshold=1e-4,
+        )
+        return SIFTGeomPC(params).detect(pts)
+    elif detector_name == "sift-voxel":
+        params = SIFTVoxelPCParams(voxel_size=0.05)
+        return SIFTVoxelPC(params).detect(pts)
+    else:
+        raise ValueError(f"Unknown PC detector: {detector_name}")
+
+
 def main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -207,15 +255,31 @@ def main() -> None:
         type=str,
         default="harris",
         choices=["harris", "sift"],
-        help="Detector to run (default: harris)",
+        help="Detector to run for 2d/3d mode (default: harris)",
     )
 
     parser.add_argument(
         "--dimension",
         type=str,
         default="3d",
-        choices=["2d", "3d"],
-        help="Data dimension (default: 3d)",
+        choices=["2d", "3d", "pc"],
+        help="Data dimension (default: 3d). Use 'pc' for point cloud.",
+    )
+
+    parser.add_argument(
+        "--pc-detector",
+        type=str,
+        default="sift-radii",
+        choices=["sift-radii", "sift-voxel", "sift-geom"],
+        help="Point-cloud detector to run when --dimension pc (default: sift-radii)",
+    )
+
+    parser.add_argument(
+        "--pc-file",
+        type=str,
+        default=None,
+        help="Path to a PLY point cloud file. If omitted, uses --synthetic-name from "
+             "data/Pointcloud/synthetic/ (default shape: sphere).",
     )
 
     # Data source (one of: --synthetic-name, --modelnet-index, none for default)
@@ -318,6 +382,35 @@ def main() -> None:
                     show=True,
                     save_path=None,
                 )
+        print(f"Saved to: {save_path}")
+
+    elif args.dimension == "pc":
+        # Load point cloud
+        if args.pc_file:
+            pcd = load_pointcloud(args.pc_file)
+            name = Path(args.pc_file).stem
+        else:
+            pc_shapes = ["cone", "cube", "cuboid", "cylinder", "pyramid", "sphere", "torus"]
+            shape = args.synthetic_name if args.synthetic_name in pc_shapes else "sphere"
+            pcd = load_pointcloud(f"data/Pointcloud/synthetic/{shape}.ply")
+            name = shape
+        pts = np.asarray(pcd.points, dtype=np.float32)
+        pts = _normalize_pointcloud(pts)
+        print(f"Loaded '{name}': {pts.shape[0]} points (normalized to [0,1])")
+
+        keypoints = _run_pc_detector(args.pc_detector, pts)
+        print(f"Detected {len(keypoints)} keypoints")
+
+        os.makedirs(args.output_dir, exist_ok=True)
+        save_path = os.path.join(args.output_dir, f"{name}_pc_{args.pc_detector}.png")
+        kp_plot = keypoints if keypoints.shape[0] > 0 else None
+        plot_pointcloud(
+            [pts],
+            titles=[f"{name} ({args.pc_detector})"],
+            keypoints_list=[kp_plot],
+            show=args.show,
+            save_path=save_path,
+        )
         print(f"Saved to: {save_path}")
 
     elif args.dimension == "2d":
