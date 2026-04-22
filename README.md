@@ -64,7 +64,23 @@ CLI filters:
 
 Outputs are written under:
 - `outputs/run_all/3d/harris/voxel/*.png`
+- `outputs/run_all/3d/harris/pointcloud/*.png`
 - `outputs/run_all/3d/sift/voxel/*.png`
 - `outputs/run_all/2d/sift/image/*.png`
+
+### Point Cloud Harris evaluation
+
+Run the standalone evaluation script for Harris PC (synthetic shapes, bunny, and sensitivity analyses):
+
+```bash
+python -m src.evaluation.evaluate_pc
+```
+
+This generates:
+- `outputs/harris_pc/<shape>_pc.png` — per-shape keypoint visualisation
+- `outputs/harris_pc/bunny_pc.png` — Stanford bunny keypoints
+- `outputs/harris_pc/sensitivity/noise_{panels,chart}.png`
+- `outputs/harris_pc/sensitivity/density_{panels,chart}.png`
+- `outputs/harris_pc/sensitivity/outlier_{panels,chart}.png`
 
 ---

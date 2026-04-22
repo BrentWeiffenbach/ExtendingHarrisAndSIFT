@@ -58,3 +58,21 @@ class SIFTGeomPCParams:
     min_points_per_octave: int = 10
     # Need ≥4 points for a meaningful 3-D covariance estimate
     min_neighbors: int = 4
+
+
+@dataclass
+class HarrisPCParams:
+    k: float = 0.02
+    neighborhood: str = "knn"
+    k_neighbors: int = 170
+    radius: float = 0.05
+    threshold_rel: float = 0.01
+    response_mode: str = "positive"
+    nms_radius: float = 0.0
+    max_keypoints: int = 500
+    min_surface_variation: float = 0.108
+    balanced_bins: tuple[int, int, int] = (1, 1, 1)
+
+
+def default_harris_pc_params() -> HarrisPCParams:
+    return HarrisPCParams()
