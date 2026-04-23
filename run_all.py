@@ -271,9 +271,7 @@ def run_3d_pc(
     else:
         raise ValueError(f"Unknown PC detector: {pc_detector}")
 
-    print(
-        f"  sift-{pc_detector:>5} pc/{split}/{name:>15} | keypoints: {len(keypoints):>4}"
-    )
+    print(f"  sift-{pc_detector} pc/{split}/{name:>15} | keypoints: {len(keypoints):>4}")
 
     out_path = out_root / "sift" / "pointcloud" / split / f"{name}.png"
     out_path.parent.mkdir(parents=True, exist_ok=True)

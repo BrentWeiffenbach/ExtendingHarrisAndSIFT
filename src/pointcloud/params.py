@@ -66,7 +66,7 @@ class HarrisPCParams:
     neighborhood: str = "knn"
     k_neighbors: int = 170
     radius: float = 0.05
-    threshold_rel: float = 0.01
+    threshold_rel: float = 0.02
     response_mode: str = "positive"
     nms_radius: float = 0.0
     max_keypoints: int = 500
