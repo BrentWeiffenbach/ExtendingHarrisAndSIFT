@@ -34,16 +34,16 @@ from src.common.io import (
     SyntheticPointCloudLoader,
     SyntheticVoxelLoader,
     load_image,
+    load_pointcloud,
 )
 from src.common.visualization import plot_pointcloud, plot_voxels
 from src.pointcloud.harris_pc import HarrisPC
 from src.pointcloud.params import (
-    SIFTGeomPCParams,
     SIFTRadiiPCParams,
     SIFTVoxelPCParams,
     default_harris_pc_params,
 )
-from src.pointcloud.sift_pc import SIFTGeomPC, SIFTRadiiPC, SIFTVoxelPC
+from src.pointcloud.sift_pc import SIFTRadiiPC, SIFTVoxelPC
 from src.voxel.harris3d import Harris3DVoxel
 from src.voxel.params import SIFT2DParams, SIFT3DParams, default_harris3d_params
 from src.voxel.sift2d import SIFT2D
@@ -143,10 +143,12 @@ def _run_3d_pc_batch(
     real: list[tuple[str, np.ndarray]],
     out_root: Path,
     detectors: list[str],
-    pc_detector: str,
+    pc_detectors: list[str],
 ) -> None:
     """Run point-cloud detectors over synthetic and real datasets."""
-    print(f"\n[3/4] Running 3D point-cloud detectors (sift variant: {pc_detector})...")
+    print(
+        f"\n[3/4] Running 3D point-cloud detectors {detectors} and pc-detectors {pc_detectors}..."
+    )
     for split, data in (("synthetic", synthetic), ("real", real)):
         for name, pts in data:
             if "harris" in detectors:
@@ -155,10 +157,11 @@ def _run_3d_pc_batch(
                 except Exception as e:
                     print(f"  [ERROR] harris PC {split}/{name}: {e}")
             if "sift" in detectors:
-                try:
-                    run_3d_pc(name, pts, out_root, pc_detector, split)
-                except Exception as e:
-                    print(f"  [ERROR] sift-{pc_detector} PC {split}/{name}: {e}")
+                for pc_detector in pc_detectors:
+                    try:
+                        run_3d_pc(name, pts, out_root, pc_detector, split)
+                    except Exception as e:
+                        print(f"  [ERROR] sift-{pc_detector} PC {split}/{name}: {e}")
 
 
 def _run_2d_batch(
@@ -249,21 +252,13 @@ def run_3d_pc(
     split : str
         'synthetic' or 'real'
     """
-    if pc_detector == "geom":
-        params = SIFTGeomPCParams(
-            num_octaves=3,
-            scales_per_octave=4,
-            base_radius=0.08,
-            contrast_threshold=1e-4,
-        )
-        keypoints = SIFTGeomPC(params).detect(pts)
-    elif pc_detector == "radii":
-        params = SIFTRadiiPCParams(
-            num_octaves=3,
-            scales_per_octave=4,
-            base_radius=0.08,
-            contrast_threshold=0.0005,
-        )
+    ply_path = f"data/Pointcloud/{split}/{name}.ply"
+    pcd = load_pointcloud(ply_path)
+    pts = np.asarray(pcd.points, dtype=np.float32)
+    pts = _normalize_pointcloud(pts)
+
+    if pc_detector == "radii":
+        params = SIFTRadiiPCParams()
         keypoints = SIFTRadiiPC(params).detect(pts)
     elif pc_detector == "voxel":
         params = SIFTVoxelPCParams(voxel_size=0.05)
@@ -271,9 +266,11 @@ def run_3d_pc(
     else:
         raise ValueError(f"Unknown PC detector: {pc_detector}")
 
-    print(f"  sift-{pc_detector} pc/{split}/{name:>15} | keypoints: {len(keypoints):>4}")
+    print(
+        f"  sift-{pc_detector} pc/{split}/{name:>15} | keypoints: {len(keypoints):>4}"
+    )
 
-    out_path = out_root / "sift" / "pointcloud" / split / f"{name}.png"
+    out_path = out_root / "sift" / "pointcloud" / split / pc_detector / f"{name}.png"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     kp_plot = keypoints if keypoints.shape[0] > 0 else None
@@ -373,7 +370,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--dimension",
-        choices=["2d", "3d", "all"],
+        choices=["2d", "3d", "pc", "all"],
         default="all",
         help="Filter runs by dimension (default: all)",
     )
@@ -385,8 +382,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--pc-detector",
-        choices=["geom", "radii", "voxel"],
-        default="geom",
+        choices=["radii", "voxel", "all"],
+        default="all",
         help="Point-cloud SIFT variant to run when dimension includes 3d (default: geom)",
     )
     args = parser.parse_args()
@@ -398,9 +395,13 @@ def main() -> None:
     )
 
     run_3d = args.dimension in {"3d", "all"}
+    run_pc = args.dimension in {"pc", "all"}
     run_2d = args.dimension in {"2d", "all"}
 
     detectors = ["harris", "sift"] if args.detector == "all" else [args.detector]
+    pc_detector = (
+        ["radii", "voxel"] if args.pc_detector == "all" else [args.pc_detector]
+    )
 
     # ------------------------------------------------------------------ #
     # 1. Load datasets
@@ -412,7 +413,7 @@ def main() -> None:
     pc_real: list[tuple[str, np.ndarray]] = []
     image_data: list[tuple[str, np.ndarray]] = []
 
-    if run_3d:
+    if run_3d or run_pc:
         voxel_synthetic, voxel_real = _load_voxel_datasets()
         pc_synthetic, pc_real = _load_pc_datasets()
     if run_2d:
@@ -427,13 +428,11 @@ def main() -> None:
         print("\n[2/4] Running 3D voxel detectors...")
         print("  [SKIP] 3D filtered out by --dimension")
 
-    # ------------------------------------------------------------------ #
-    # 3. Point-cloud detectors (harris + sift)
-    # ------------------------------------------------------------------ #
-    if run_3d:
-        _run_3d_pc_batch(pc_synthetic, pc_real, out_root, detectors, args.pc_detector)
+    # Point-cloud detectors
+    if run_pc:
+        _run_3d_pc_batch(pc_synthetic, pc_real, out_root, detectors, pc_detector)
     else:
-        print(f"\n[3/4] Running 3D point-cloud detectors ({args.pc_detector})...")
+        print(f"\n[3/4] Running 3D point-cloud detector ({pc_detector})...")
         print("  [SKIP] 3D filtered out by --dimension")
 
     # ------------------------------------------------------------------ #

@@ -6,7 +6,6 @@ import open3d as o3d
 
 from src.common.base_detector import Detector3D
 from src.pointcloud.params import (
-    SIFTGeomPCParams,
     SIFTRadiiPCParams,
     SIFTRadiiPCResult,
     SIFTVoxelPCParams,
@@ -29,16 +28,18 @@ class SIFTRadiiPC(Detector3D):
         if len(pts) < self.params.min_points_per_octave:
             return SIFTRadiiPCResult(
                 points_per_octave=[],
-                density_pyramid=[],
+                smoothed_pyramid=[],
                 radii_pyramid=[],
                 dog_pyramid=[],
                 keypoints=np.empty((0, 5), dtype=np.float32),
             )
 
-        density_pyramid, radii_pyramid, points_per_octave = self.build_scale_space(pts)
-        dog_pyramid, dog_radius_pairs = self.compute_dog(density_pyramid, radii_pyramid)
+        smoothed_pyramid, radii_pyramid, points_per_octave = self.build_scale_space(pts)
+        dog_pyramid, dog_radii = self.compute_dog(
+            smoothed_pyramid, radii_pyramid, points_per_octave
+        )
         extrema_by_octave = self.detect_extrema(
-            dog_pyramid, dog_radius_pairs, points_per_octave
+            dog_pyramid, dog_radii, points_per_octave
         )
 
         all_kp = [e for e in extrema_by_octave if e.shape[0] > 0]
@@ -50,7 +51,7 @@ class SIFTRadiiPC(Detector3D):
 
         return SIFTRadiiPCResult(
             points_per_octave=points_per_octave,
-            density_pyramid=density_pyramid,
+            smoothed_pyramid=smoothed_pyramid,
             radii_pyramid=radii_pyramid,
             dog_pyramid=dog_pyramid,
             keypoints=keypoints,
@@ -59,7 +60,7 @@ class SIFTRadiiPC(Detector3D):
     def build_scale_space(
         self, points: np.ndarray
     ) -> tuple[list[list[np.ndarray]], list[list[float]], list[np.ndarray]]:
-        density_pyramid: list[list[np.ndarray]] = []
+        smoothed_pyramid: list[list[np.ndarray]] = []
         radii_pyramid: list[list[float]] = []
         points_per_octave: list[np.ndarray] = []
 
@@ -70,20 +71,15 @@ class SIFTRadiiPC(Detector3D):
                 break
 
             tree = KDTree(current_pts.astype(np.float64))
-            octave_densities: list[np.ndarray] = []
+            octave_smoothed: list[np.ndarray] = []
             octave_radii: list[float] = []
 
-            for scale in range(self.params.scales_per_octave):
-                r = (
-                    self.params.base_radius
-                    * (self.params.radius_growth_factor**octave)
-                    * (2.0 ** (scale / self.params.scales_per_octave))
-                )
-                density = self._compute_density(current_pts, tree, r)
-                octave_densities.append(density)
+            for r in self.params.radii:
+                smoothed = self._compute_smoothed_positions(current_pts, tree, r)
+                octave_smoothed.append(smoothed)
                 octave_radii.append(float(r))
 
-            density_pyramid.append(octave_densities)
+            smoothed_pyramid.append(octave_smoothed)
             radii_pyramid.append(octave_radii)
             points_per_octave.append(current_pts)
 
@@ -93,111 +89,118 @@ class SIFTRadiiPC(Detector3D):
             )
             current_pts = self.farthest_point_sample(current_pts, n_next)
 
-        return density_pyramid, radii_pyramid, points_per_octave
+        return smoothed_pyramid, radii_pyramid, points_per_octave
 
     def compute_dog(
         self,
-        density_pyramid: list[list[np.ndarray]],
+        smoothed_pyramid: list[list[np.ndarray]],
         radii_pyramid: list[list[float]],
-    ) -> tuple[list[list[np.ndarray]], list[list[tuple[float, float]]]]:
+        points_per_octave: list[np.ndarray],
+    ) -> tuple[list[list[np.ndarray]], list[list[float]]]:
+        """DoG as Euclidean drift between consecutive smoothed-position levels.
+
+        dog[s] = ||smoothed[s+1] - smoothed[s]|| — how much each point's smoothed
+        position shifts when the radius increases to the next scale.  Large at
+        corners/edges (position keeps changing with scale) and small on flat surfaces.
+        """
         dog_pyramid: list[list[np.ndarray]] = []
-        dog_radius_pairs: list[list[tuple[float, float]]] = []
+        dog_radii: list[list[float]] = []
 
-        for octave_idx, octave_densities in enumerate(density_pyramid):
-            if len(octave_densities) < 2:
-                dog_pyramid.append([])
-                dog_radius_pairs.append([])
-                continue
-
-            octave_dogs: list[np.ndarray] = []
-            octave_pairs: list[tuple[float, float]] = []
+        for octave_idx, octave_smoothed in enumerate(smoothed_pyramid):
             octave_radii = radii_pyramid[octave_idx]
+            octave_dogs: list[np.ndarray] = []
+            octave_r: list[float] = []
 
-            for i in range(len(octave_densities) - 1):
-                dog = (octave_densities[i + 1] - octave_densities[i]).astype(np.float32)
+            for i in range(len(octave_smoothed) - 1):
+                r_char = float(np.sqrt(octave_radii[i] * octave_radii[i + 1]))
+                diff = octave_smoothed[i + 1] - octave_smoothed[i]  # (N, 3)
+                # Normalise by r_char → dimensionless "drift per unit radius",
+                # so contrast_threshold is scale-invariant.
+                dog = (np.linalg.norm(diff, axis=1) / r_char).astype(np.float32)
                 octave_dogs.append(dog)
-                octave_pairs.append((octave_radii[i], octave_radii[i + 1]))
+                octave_r.append(r_char)
 
             dog_pyramid.append(octave_dogs)
-            dog_radius_pairs.append(octave_pairs)
+            dog_radii.append(octave_r)
 
-        return dog_pyramid, dog_radius_pairs
+        return dog_pyramid, dog_radii
 
     def detect_extrema(
         self,
         dog_pyramid: list[list[np.ndarray]],
-        dog_radius_pairs: list[list[tuple[float, float]]],
+        dog_radii: list[list[float]],
         points_per_octave: list[np.ndarray],
     ) -> list[np.ndarray]:
+        """Spatial-NMS-only detection across all scale levels.
+
+        Displacement from original is monotonically increasing with scale, so no
+        level is ever a scale-axis extremum.  Instead: at each scale find spatial
+        maxima above threshold, then deduplicate across scales with a greedy NMS pass.
+        """
         threshold = float(self.params.contrast_threshold)
         extrema_by_octave: list[np.ndarray] = []
 
         for octave_idx, octave_dogs in enumerate(dog_pyramid):
             pts = points_per_octave[octave_idx]
-            pairs = dog_radius_pairs[octave_idx]
+            radii = dog_radii[octave_idx]
 
-            if len(octave_dogs) < 3:
+            if not octave_dogs:
                 extrema_by_octave.append(np.empty((0, 5), dtype=np.float32))
                 continue
 
             tree = KDTree(pts.astype(np.float64))
             candidates: list[tuple[float, float, float, float, float]] = []
 
-            for dog_idx in range(1, len(octave_dogs) - 1):
-                prev_dog = octave_dogs[dog_idx - 1]
-                curr_dog = octave_dogs[dog_idx]
-                next_dog = octave_dogs[dog_idx + 1]
+            for scale_idx, curr_dog in enumerate(octave_dogs):
+                r_char = radii[scale_idx]
+                nms_r = r_char * self.params.nms_radius_factor
 
-                r_low, r_high = pairs[dog_idx]
-                r_char = float(np.sqrt(r_low * r_high))
-                nms_r = r_low * self.params.nms_radius_factor
-
-                # Vectorized pre-filter: threshold and scale-axis extremum check
-                mask = (np.abs(curr_dog) >= threshold) & (
-                    (curr_dog > np.maximum(prev_dog, next_dog))
-                    | (curr_dog < np.minimum(prev_dog, next_dog))
-                )
-                candidate_indices = np.where(mask)[0]
+                candidate_indices = np.where(curr_dog >= threshold)[0]
 
                 for i in candidate_indices.tolist():
                     val = float(curr_dog[i])
-                    is_max = val > max(float(prev_dog[i]), float(next_dog[i]))
 
-                    # Spatial NMS
+                    # Spatial NMS: must be the local maximum within nms_r
                     nbr_indices = tree.query_ball_point(
                         pts[i].astype(np.float64), r=nms_r
                     )
-                    nbr_indices_excl = [j for j in nbr_indices if j != i]
-
-                    if nbr_indices_excl:
-                        nbr_vals = curr_dog[nbr_indices_excl]
-                        if is_max and val <= float(np.max(nbr_vals)):
-                            continue
-                        if not is_max and val >= float(np.min(nbr_vals)):
-                            continue
-
-                    # Scale refinement
-                    offset, refined_response = self._refine_scale(
-                        float(prev_dog[i]), val, float(next_dog[i]), threshold
-                    )
-                    if offset is None:
+                    nbr_vals = curr_dog[[j for j in nbr_indices if j != i]]
+                    if nbr_vals.size > 0 and val <= float(nbr_vals.max()):
                         continue
 
-                    r_refined = r_char * (2.0**offset)
                     candidates.append(
                         (
                             float(pts[i, 0]),
                             float(pts[i, 1]),
                             float(pts[i, 2]),
-                            float(r_refined),
-                            float(refined_response),
+                            r_char,
+                            val,
                         )
                     )
 
-            if candidates:
-                extrema_by_octave.append(np.array(candidates, dtype=np.float32))
-            else:
+            if not candidates:
                 extrema_by_octave.append(np.empty((0, 5), dtype=np.float32))
+                continue
+
+            # Deduplicate across scales: greedy NMS sorted by response descending
+            cands = np.array(candidates, dtype=np.float32)
+            order = np.argsort(-cands[:, 4])
+            cands = cands[order]
+            suppressed = np.zeros(len(cands), dtype=bool)
+            dedup_r = float(max(radii)) * self.params.nms_radius_factor
+            kd = KDTree(cands[:, :3].astype(np.float64))
+            kept: list[int] = []
+            for k in range(len(cands)):
+                if suppressed[k]:
+                    continue
+                kept.append(k)
+                for nb in kd.query_ball_point(
+                    cands[k, :3].astype(np.float64), r=dedup_r
+                ):
+                    if nb != k:
+                        suppressed[nb] = True
+
+            extrema_by_octave.append(cands[kept])
 
         return extrema_by_octave
 
@@ -211,10 +214,16 @@ class SIFTRadiiPC(Detector3D):
         down = pcd.farthest_point_down_sample(n)
         return np.asarray(down.points, dtype=np.float32)
 
-    def _compute_density(
+    def _compute_smoothed_positions(
         self, points: np.ndarray, tree: KDTree, radius: float
     ) -> np.ndarray:
-        density = np.zeros(len(points), dtype=np.float32)
+        """Return Gaussian-weighted average neighbour positions for each point.
+
+        Each point is moved to the weighted centroid of its neighbours within
+        `radius`.  Points with fewer than min_neighbors neighbours keep their
+        original position.  Returns (N, 3) float32.
+        """
+        smoothed = points.copy().astype(np.float64)
         two_r2 = 2.0 * radius * radius
         neighbor_lists = tree.query_ball_point(
             points.astype(np.float64), r=radius, workers=-1
@@ -222,13 +231,17 @@ class SIFTRadiiPC(Detector3D):
 
         for i, nbrs in enumerate(neighbor_lists):
             if len(nbrs) < self.params.min_neighbors:
-                density[i] = 0.0
                 continue
-            diffs = points[nbrs].astype(np.float64) - points[i].astype(np.float64)
+            nbr_pts = points[nbrs].astype(np.float64)
+            diffs = nbr_pts - points[i].astype(np.float64)
             sq_dists = np.einsum("ij,ij->i", diffs, diffs)
-            density[i] = float(np.sum(np.exp(-sq_dists / two_r2)))
+            weights = np.exp(-sq_dists / two_r2)
+            w_sum = weights.sum()
+            if w_sum < 1e-10:
+                continue
+            smoothed[i] = (weights[:, None] * nbr_pts).sum(axis=0) / w_sum
 
-        return density
+        return smoothed.astype(np.float32)
 
     def _refine_scale(
         self,
@@ -331,62 +344,3 @@ class SIFTVoxelPC(Detector3D):
             raise ValueError("points must be (N, 3)")
         pts = pts[:, :3]
         return pts[np.isfinite(pts).all(axis=1)]
-
-
-class SIFTGeomPC(SIFTRadiiPC):
-    """SIFT on point clouds using local covariance geometry as the scale-space signal.
-
-    Replaces Gaussian KDE density with the smallest eigenvalue of the Gaussian-weighted
-    local covariance matrix, normalised by r².  On a perfectly flat surface this value
-    is ~0 (no thickness); at corners / edges all three principal variances are non-zero,
-    so the signal is large.  DoG of this geometric field finds multi-scale extrema of
-    3-D shape complexity rather than point-density variation — meaningful even for
-    uniformly-sampled synthetic meshes.
-    """
-
-    def __init__(self, params: SIFTGeomPCParams | None = None):
-        super().__init__(params or SIFTGeomPCParams())
-
-    # --- override the scalar-field computation only ----------------------------
-
-    def _compute_density(
-        self, points: np.ndarray, tree: KDTree, radius: float
-    ) -> np.ndarray:
-        return self._compute_geometry(points, tree, radius)
-
-    def _compute_geometry(
-        self, points: np.ndarray, tree: KDTree, radius: float
-    ) -> np.ndarray:
-        """Return the scale-normalised smallest covariance eigenvalue for each point.
-
-        For each point i the Gaussian-weighted covariance of its neighbours is
-        computed and divided by r² so that the eigenvalues are dimensionless and
-        comparable across octaves.  The minimum eigenvalue λ_min is ~0 on flat
-        surfaces and increases as local geometry becomes more corner-like.
-        """
-        n = len(points)
-        feature = np.zeros(n, dtype=np.float32)
-        r2 = float(radius * radius)
-        two_r2 = 2.0 * r2
-        neighbor_lists = tree.query_ball_point(
-            points.astype(np.float64), r=radius, workers=-1
-        )
-
-        for i, nbrs in enumerate(neighbor_lists):
-            if len(nbrs) < self.params.min_neighbors:
-                continue
-            nbr_pts = points[nbrs].astype(np.float64)
-            diffs = nbr_pts - points[i].astype(np.float64)  # (k, 3)
-            sq_dists = np.einsum("ij,ij->i", diffs, diffs)
-            weights = np.exp(-sq_dists / two_r2)
-            w_sum = weights.sum()
-            if w_sum < 1e-10:
-                continue
-            # Gaussian-weighted covariance centred at p_i, scale-normalised by r²
-            w_norm = weights / w_sum
-            cov = (diffs.T * w_norm) @ diffs / r2  # (3, 3)
-            # eigvalsh returns eigenvalues in ascending order (λ_min first)
-            eigvals = np.linalg.eigvalsh(cov)
-            feature[i] = float(max(eigvals[0], 0.0))
-
-        return feature

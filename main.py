@@ -37,8 +37,8 @@ from src.common.visualization import (
     rasterize_extrema_blobs_3d,
     view_extrema_blobs_3d_napari,
 )
-from src.pointcloud.params import SIFTGeomPCParams, SIFTRadiiPCParams, SIFTVoxelPCParams
-from src.pointcloud.sift_pc import SIFTGeomPC, SIFTRadiiPC, SIFTVoxelPC
+from src.pointcloud.params import SIFTRadiiPCParams, SIFTVoxelPCParams
+from src.pointcloud.sift_pc import SIFTRadiiPC, SIFTVoxelPC
 from src.voxel.harris3d import Harris3DVoxel
 from src.voxel.params import default_harris3d_params, SIFT3DParams, SIFT2DParams
 from src.voxel.sift2d import SIFT2D
@@ -217,19 +217,10 @@ def _run_pc_detector(detector_name: str, pts: np.ndarray) -> np.ndarray:
     if detector_name == "sift-radii":
         params = SIFTRadiiPCParams(
             num_octaves=3,
-            scales_per_octave=4,
-            base_radius=0.08,
+            radii=[0.05, 0.08, 0.13, 0.2],
             contrast_threshold=0.0005,
         )
         return SIFTRadiiPC(params).detect(pts)
-    elif detector_name == "sift-geom":
-        params = SIFTGeomPCParams(
-            num_octaves=3,
-            scales_per_octave=4,
-            base_radius=0.08,
-            contrast_threshold=1e-2,
-        )
-        return SIFTGeomPC(params).detect(pts)
     elif detector_name == "sift-voxel":
         params = SIFTVoxelPCParams(voxel_size=0.05)
         return SIFTVoxelPC(params).detect(pts)

@@ -2,7 +2,7 @@
 
 Opens napari with a control panel where you can:
   - Select dimension (2D / 3D-Voxel / 3D-PointCloud)
-  - Select algorithm (SIFT, Harris, SIFT-Geom, etc.)
+  - Select algorithm (SIFT, Harris, etc.)
   - Select data source
   - Tune all algorithm parameters via live widgets
   - Toggle intermediate pipeline outputs as napari layers
@@ -42,8 +42,8 @@ from src.common.io import (
     load_pointcloud,
 )
 from src.common.visualization import rasterize_extrema_blobs_3d
-from src.pointcloud.params import SIFTGeomPCParams, SIFTRadiiPCParams, SIFTVoxelPCParams
-from src.pointcloud.sift_pc import SIFTGeomPC, SIFTRadiiPC, SIFTVoxelPC
+from src.pointcloud.params import SIFTRadiiPCParams, SIFTVoxelPCParams
+from src.pointcloud.sift_pc import SIFTRadiiPC, SIFTVoxelPC
 from src.voxel.harris3d import Harris3DVoxel
 from src.voxel.params import Harris3DParams, SIFT2DParams, SIFT3DParams
 from src.voxel.sift2d import SIFT2D
@@ -60,14 +60,13 @@ _DIM_CHOICES = ["2D", "3D-Voxel", "3D-PointCloud"]
 _ALGO_CHOICES: dict[str, list[str]] = {
     "2D": ["SIFT"],
     "3D-Voxel": ["Harris", "SIFT"],
-    "3D-PointCloud": ["SIFT-Geom", "SIFT-Radii", "SIFT-Voxel"],
+    "3D-PointCloud": ["SIFT-Radii", "SIFT-Voxel"],
 }
 
 _PARAMS_CLASS: dict[str, type] = {
     "2D/SIFT": SIFT2DParams,
     "3D-Voxel/Harris": Harris3DParams,
     "3D-Voxel/SIFT": SIFT3DParams,
-    "3D-PointCloud/SIFT-Geom": SIFTGeomPCParams,
     "3D-PointCloud/SIFT-Radii": SIFTRadiiPCParams,
     "3D-PointCloud/SIFT-Voxel": SIFTVoxelPCParams,
 }
@@ -304,26 +303,6 @@ def _run_detector(
             "intermediaries": {
                 "gaussian_pyramid": result.gaussian_pyramid,
                 "dog_pyramid": result.dog_pyramid,
-            },
-        }
-
-    elif key == "3D-PointCloud/SIFT-Geom":
-        result = SIFTGeomPC(params).run(data)
-        kp5 = (
-            result.keypoints.astype(np.float32)
-            if result.keypoints.shape[0] > 0
-            else np.empty((0, 5), np.float32)
-        )
-        return {
-            "keypoints": kp5[:, :3],
-            "keypoints_full": kp5,
-            "raw": data,
-            "intermediaries": {
-                "density_pyramid": result.density_pyramid,
-                "dog_pyramid": result.dog_pyramid,
-                "radii_pyramid": result.radii_pyramid,
-                "points_per_octave": result.points_per_octave,
-                "signal_name": "λ_min",
             },
         }
 
