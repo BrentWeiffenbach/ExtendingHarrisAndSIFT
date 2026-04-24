@@ -11,10 +11,15 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 
-from src.common.io import SyntheticVoxelLoader, ModelNetLoader, load_image, load_pointcloud
+from src.common.io import (
+    SyntheticVoxelLoader,
+    ModelNetLoader,
+    load_image,
+    load_pointcloud,
+)
 from src.common.visualization import plot_voxels, plot_pointcloud
-from src.pointcloud.params import SIFTGeomPCParams, SIFTRadiiPCParams, SIFTVoxelPCParams
-from src.pointcloud.sift_pc import SIFTGeomPC, SIFTRadiiPC, SIFTVoxelPC
+from src.pointcloud.params import SIFTRadiiPCParams, SIFTVoxelPCParams
+from src.pointcloud.sift_pc import SIFTRadiiPC, SIFTVoxelPC
 from src.voxel.harris3d import Harris3DVoxel
 from src.voxel.params import default_harris3d_params, SIFT3DParams, SIFT2DParams
 from src.voxel.sift2d import SIFT2D
@@ -81,14 +86,15 @@ def _run_3d_voxel_batch(
                 print(f"  [ERROR] 3D {detector} {name}: {e}")
 
 
-def _run_3d_pc_batch(out_root: Path, pc_detector: str) -> None:
+def _run_3d_pc_batch(out_root: Path, detectors: list[str]) -> None:
     """Run point-cloud detector over all synthetic PLY shapes."""
-    print(f"\n[3/4] Running 3D point-cloud detector ({pc_detector})...")
-    for shape in _PC_SHAPES:
-        try:
-            run_3d_pc(shape, out_root, pc_detector)
-        except Exception as e:
-            print(f"  [ERROR] PC {pc_detector} {shape}: {e}")
+    print(f"\n[3/4] Running 3D point-cloud detector ({detectors})...")
+    for pc_detector in detectors:
+        for shape in _PC_SHAPES:
+            try:
+                run_3d_pc(shape, out_root, pc_detector)
+            except Exception as e:
+                print(f"  [ERROR] PC {pc_detector} {shape}: {e}")
 
 
 def _run_2d_batch(
@@ -174,21 +180,8 @@ def run_3d_pc(name: str, out_root: Path, pc_detector: str) -> None:
     pts = np.asarray(pcd.points, dtype=np.float32)
     pts = _normalize_pointcloud(pts)
 
-    if pc_detector == "geom":
-        params = SIFTGeomPCParams(
-            num_octaves=3,
-            scales_per_octave=4,
-            base_radius=0.08,
-            contrast_threshold=1e-4,
-        )
-        keypoints = SIFTGeomPC(params).detect(pts)
-    elif pc_detector == "radii":
-        params = SIFTRadiiPCParams(
-            num_octaves=3,
-            scales_per_octave=4,
-            base_radius=0.08,
-            contrast_threshold=0.0005,
-        )
+    if pc_detector == "radii":
+        params = SIFTRadiiPCParams()
         keypoints = SIFTRadiiPC(params).detect(pts)
     elif pc_detector == "voxel":
         params = SIFTVoxelPCParams(voxel_size=0.05)
@@ -266,7 +259,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--dimension",
-        choices=["2d", "3d", "all"],
+        choices=["2d", "3d", "pc", "all"],
         default="all",
         help="Filter runs by dimension (default: all)",
     )
@@ -278,20 +271,26 @@ def main() -> None:
     )
     parser.add_argument(
         "--pc-detector",
-        choices=["geom", "radii", "voxel"],
-        default="geom",
+        choices=["radii", "voxel", "all"],
+        default="all",
         help="Point-cloud SIFT variant to run when dimension includes 3d (default: geom)",
     )
     args = parser.parse_args()
 
     out_root = Path("outputs/run_all")
     _print_banner()
-    print(f"Filters: dimension={args.dimension}, detector={args.detector}, pc-detector={args.pc_detector}")
+    print(
+        f"Filters: dimension={args.dimension}, detector={args.detector}, pc-detector={args.pc_detector}"
+    )
 
     run_3d = args.dimension in {"3d", "all"}
+    run_pc = args.dimension in {"pc", "all"}
     run_2d = args.dimension in {"2d", "all"}
 
     detectors = ["harris", "sift"] if args.detector == "all" else [args.detector]
+    pc_detector = (
+        ["radii", "voxel"] if args.pc_detector == "all" else [args.pc_detector]
+    )
 
     # Load datasets
     print("\n[1/4] Loading datasets...")
@@ -311,10 +310,10 @@ def main() -> None:
         print("  [SKIP] 3D filtered out by --dimension")
 
     # Point-cloud detectors
-    if run_3d:
-        _run_3d_pc_batch(out_root, args.pc_detector)
+    if run_pc:
+        _run_3d_pc_batch(out_root, pc_detector)
     else:
-        print(f"\n[3/4] Running 3D point-cloud detector ({args.pc_detector})...")
+        print(f"\n[3/4] Running 3D point-cloud detector ({pc_detector})...")
         print("  [SKIP] 3D filtered out by --dimension")
 
     # 2D image detectors
