@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 
+from demos.sift3d_walkthrough import run_walkthrough
 from src.common.io import ModelNetLoader, SyntheticVoxelLoader, load_pointcloud
 from src.common.visualization import (
     plot_dog_scale_space,
@@ -655,6 +656,9 @@ def run_pc_sift_response_demo(
 
 
 DEMO_REGISTRY = {
+    "3d-walkthrough": lambda synthetic_name=None, modelnet_index=None: run_walkthrough(
+        shape=synthetic_name, modelnet_index=modelnet_index
+    ),
     "2d": run_2d_demo,
     "2d-signature": run_2d_signature_demo,
     "3d-gaussian": run_3d_gaussian_demo,
