@@ -31,8 +31,10 @@ class SIFT3DVoxel(Detector3D):
         dog_pyramid, dog_sigma_pairs = self.compute_dog_pyramid(
             gaussian_pyramid, sigma_pyramid
         )
+        dog_pyramid = self._normalize_dog_pyramid(dog_pyramid)
         extrema_local = self.detect_extrema_3d(dog_pyramid, dog_sigma_pairs)
         extrema_global = self.to_global_extrema(extrema_local)
+        extrema_global = self._suppress_duplicate_keypoints(extrema_global)
         return SIFT3DGaussianResult(
             original_volume=volume,
             gaussian_pyramid=gaussian_pyramid,
@@ -141,6 +143,17 @@ class SIFT3DVoxel(Detector3D):
 
         return dog_pyramid, dog_sigma_pairs
 
+    def _normalize_dog_pyramid(
+        self, dog_pyramid: list[list[np.ndarray]]
+    ) -> list[list[np.ndarray]]:
+        global_max = max(
+            (float(np.max(np.abs(dog))) for octave in dog_pyramid for dog in octave),
+            default=0.0,
+        )
+        if global_max < 1e-12:
+            return dog_pyramid
+        return [[dog / global_max for dog in octave] for octave in dog_pyramid]
+
     def detect_extrema_3d(
         self,
         dog_pyramid: list[list[np.ndarray]],
@@ -157,96 +170,46 @@ class SIFT3DVoxel(Detector3D):
 
             points: list[tuple[float, float, float, float, float, float, float]] = []
             for dog_idx in range(1, len(octave_dogs) - 1):
-                prev_vol = octave_dogs[dog_idx - 1]
                 curr_vol = octave_dogs[dog_idx]
-                next_vol = octave_dogs[dog_idx + 1]
                 z_max, y_max, x_max = curr_vol.shape
-                sigma_low, sigma_high, _ = dog_sigma_pairs[octave_idx][dog_idx]
-                sigma_char = float(np.sqrt(max(1e-12, sigma_low * sigma_high)))
 
-                for z in range(border, z_max - border):
-                    for y in range(border, y_max - border):
-                        for x in range(border, x_max - border):
-                            value = float(curr_vol[z, y, x])
-                            if abs(value) < threshold:
-                                continue
+                b = border
+                above_threshold = np.abs(curr_vol) >= threshold
+                above_threshold[:b] = False
+                above_threshold[z_max - b :] = False
+                above_threshold[:, :b] = False
+                above_threshold[:, y_max - b :] = False
+                above_threshold[:, :, :b] = False
+                above_threshold[:, :, x_max - b :] = False
 
-                            patch_prev = prev_vol[
-                                z - 1 : z + 2, y - 1 : y + 2, x - 1 : x + 2
-                            ]
-                            patch_curr = curr_vol[
-                                z - 1 : z + 2, y - 1 : y + 2, x - 1 : x + 2
-                            ]
-                            patch_next = next_vol[
-                                z - 1 : z + 2, y - 1 : y + 2, x - 1 : x + 2
-                            ]
-
-                            neighbors = np.concatenate(
-                                [
-                                    patch_prev.ravel(),
-                                    patch_curr.ravel(),
-                                    patch_next.ravel(),
-                                ]
-                            )
-                            center_idx = 27 + 13
-                            neighbors = np.delete(neighbors, center_idx)
-
-                            is_max = value > float(np.max(neighbors))
-                            is_min = value < float(np.min(neighbors))
-                            if is_max or is_min:
-                                refined = self._refine_extremum_3d(
-                                    octave_dogs=octave_dogs,
-                                    dog_idx=dog_idx,
-                                    z=z,
-                                    y=y,
-                                    x=x,
-                                    threshold=threshold,
-                                )
-                                if refined is not None:
-                                    rz, ry, rx, rs, response = refined
-                                    rs_clamped = float(
-                                        np.clip(
-                                            rs,
-                                            0.0,
-                                            len(dog_sigma_pairs[octave_idx]) - 1,
-                                        )
-                                    )
-                                    sigma_idx0 = int(np.floor(rs_clamped))
-                                    sigma_idx1 = min(
-                                        sigma_idx0 + 1,
-                                        len(dog_sigma_pairs[octave_idx]) - 1,
-                                    )
-                                    t = float(
-                                        np.clip(rs_clamped - sigma_idx0, 0.0, 1.0)
-                                    )
-
-                                    low0, high0, _ = dog_sigma_pairs[octave_idx][
-                                        sigma_idx0
-                                    ]
-                                    low1, high1, _ = dog_sigma_pairs[octave_idx][
-                                        sigma_idx1
-                                    ]
-                                    sigma_char0 = float(
-                                        np.sqrt(max(1e-12, low0 * high0))
-                                    )
-                                    sigma_char1 = float(
-                                        np.sqrt(max(1e-12, low1 * high1))
-                                    )
-                                    sigma_char_refined = float(
-                                        (1.0 - t) * sigma_char0 + t * sigma_char1
-                                    )
-
-                                    points.append(
-                                        (
-                                            rz,
-                                            ry,
-                                            rx,
-                                            rs,
-                                            response,
-                                            float(octave_idx),
-                                            sigma_char_refined,
-                                        )
-                                    )
+                for z, y, x in zip(*np.where(above_threshold)):
+                    refined = self._refine_extremum_3d(
+                        octave_dogs=octave_dogs,
+                        dog_idx=dog_idx,
+                        z=int(z),
+                        y=int(y),
+                        x=int(x),
+                        threshold=threshold,
+                    )
+                    if refined is None:
+                        continue
+                    rz, ry, rx, rs, response = refined
+                    rs_clamped = float(
+                        np.clip(rs, 0.0, len(dog_sigma_pairs[octave_idx]) - 1)
+                    )
+                    sigma_idx0 = int(np.floor(rs_clamped))
+                    sigma_idx1 = min(
+                        sigma_idx0 + 1, len(dog_sigma_pairs[octave_idx]) - 1
+                    )
+                    t = float(np.clip(rs_clamped - sigma_idx0, 0.0, 1.0))
+                    low0, high0, _ = dog_sigma_pairs[octave_idx][sigma_idx0]
+                    low1, high1, _ = dog_sigma_pairs[octave_idx][sigma_idx1]
+                    sigma_char0 = float(np.sqrt(max(1e-12, low0 * high0)))
+                    sigma_char1 = float(np.sqrt(max(1e-12, low1 * high1)))
+                    sigma_char_refined = float((1.0 - t) * sigma_char0 + t * sigma_char1)
+                    points.append(
+                        (rz, ry, rx, rs, response, float(octave_idx), sigma_char_refined)
+                    )
 
             extrema = (
                 np.asarray(points, dtype=np.float32)
@@ -281,6 +244,29 @@ class SIFT3DVoxel(Detector3D):
             return np.empty((0, 7), dtype=np.float32)
         return np.vstack(rows).astype(np.float32)
 
+    def _suppress_duplicate_keypoints(self, extrema_global: np.ndarray) -> np.ndarray:
+        if extrema_global.shape[0] == 0:
+            return extrema_global
+        factor = float(self.params.suppression_min_dist_factor)
+        if factor <= 0:
+            return extrema_global
+
+        # Sort strongest first; suppress weaker keypoints within factor*sigma.
+        # Global sigma = sigma_char (col 3) * 2^octave (col 5).
+        order = np.argsort(-np.abs(extrema_global[:, 4]))
+        data = extrema_global[order]
+        zyx = data[:, :3]
+        global_sigma = data[:, 3] * (2.0 ** data[:, 5])
+
+        keep = np.ones(len(data), dtype=bool)
+        for i in range(len(data)):
+            if not keep[i]:
+                continue
+            dists = np.linalg.norm(zyx[i + 1 :] - zyx[i], axis=1)
+            keep[i + 1 :][dists < factor * global_sigma[i]] = False
+
+        return data[keep]
+
     def _refine_extremum_3d(
         self,
         octave_dogs: list[np.ndarray],
@@ -295,7 +281,6 @@ class SIFT3DVoxel(Detector3D):
         yy = int(y)
         xx = int(x)
         offset_threshold = float(self.params.refinement_offset_threshold)
-        singular_eps = float(self.params.refinement_singular_eps)
         if s <= 0 or s >= len(octave_dogs) - 1:
             return None
 

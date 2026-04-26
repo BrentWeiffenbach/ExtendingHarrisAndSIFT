@@ -179,6 +179,7 @@ def plot_pointcloud(
     pts: list,
     titles: Optional[list] = None,
     keypoints_list: Optional[list] = None,
+    keypoint_scores_list: Optional[list] = None,
     show: bool = True,
     save_path: Optional[str] = None,
 ):
@@ -199,7 +200,28 @@ def plot_pointcloud(
 
         if keypoints_list is not None and keypoints_list[i] is not None:
             kp = _as_xyz_points(keypoints_list[i])
-            ax.scatter(kp[:, 0], kp[:, 1], kp[:, 2], c="red", s=12)
+            scores = None
+            if (
+                keypoint_scores_list is not None
+                and i < len(keypoint_scores_list)
+                and keypoint_scores_list[i] is not None
+            ):
+                scores = np.asarray(keypoint_scores_list[i])
+            if scores is not None and scores.size == kp.shape[0]:
+                ax.scatter(
+                    kp[:, 0],
+                    kp[:, 1],
+                    kp[:, 2],
+                    c=scores,
+                    cmap="plasma",
+                    edgecolors="black",
+                    linewidths=0.3,
+                    s=24,
+                    depthshade=False,
+                    zorder=5,
+                )
+            else:
+                ax.scatter(kp[:, 0], kp[:, 1], kp[:, 2], c="red", s=12)
 
         if titles is not None and i < len(titles):
             ax.set_title(titles[i])
@@ -773,6 +795,76 @@ def plot_extrema_blobs_voxel(
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_extrema_circles_3d(
+    original_volume: np.ndarray,
+    extrema_global: np.ndarray,
+    sigma_scale: float = 1.4142,
+) -> None:
+    """Show keypoints as scale-proportional circle outlines on the three
+    orthogonal centre slices, matching the 2-D SIFT overlay style.
+
+    extrema_global columns: z, y, x, sigma_char, response, octave, rs
+    """
+    D, H, W = original_volume.shape
+    # Each view: (axis_col_in_zyx, slice_idx, horiz_col, vert_col, axis_label, h_label, v_label)
+    views = [
+        (0, D // 2, 2, 1, "Z", "X", "Y"),
+        (1, H // 2, 2, 0, "Y", "X", "Z"),
+        (2, W // 2, 1, 0, "X", "Y", "Z"),
+    ]
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig.suptitle("Keypoints — circle radius ∝ σ", fontsize=11)
+
+    has_data = extrema_global.size > 0
+    if has_data:
+        data = np.asarray(extrema_global, dtype=np.float32)
+        zyx = data[:, :3]
+        global_sigma = data[:, 3] * (2.0 ** data[:, 5])
+        radii = sigma_scale * global_sigma
+        responses = data[:, 4]
+        max_abs = float(np.max(np.abs(responses))) or 1e-6
+        norm = colors.Normalize(vmin=-max_abs, vmax=max_abs)
+        cmap = cm.get_cmap("RdBu_r")
+
+    for ax, (ax_col, sl, h_col, v_col, ax_name, h_label, v_label) in zip(axes, views):
+        if ax_col == 0:
+            img = original_volume[sl, :, :]
+        elif ax_col == 1:
+            img = original_volume[:, sl, :]
+        else:
+            img = original_volume[:, :, sl]
+
+        ax.imshow(img, cmap="gray", origin="upper", aspect="equal")
+        ax.set_title(f"{ax_name} = {sl}", fontsize=9)
+        ax.set_xlabel(h_label)
+        ax.set_ylabel(v_label)
+
+        if has_data:
+            near = np.abs(zyx[:, ax_col] - sl) <= global_sigma
+            for h, v, r, resp in zip(
+                zyx[near, h_col], zyx[near, v_col], radii[near], responses[near]
+            ):
+                ax.add_patch(
+                    Circle(
+                        (float(h), float(v)),
+                        radius=float(r),
+                        fill=False,
+                        edgecolor=cmap(norm(float(resp))),
+                        linewidth=1.2,
+                        alpha=0.85,
+                    )
+                )
+
+    if has_data:
+        sm = cm.ScalarMappable(norm=norm, cmap=cmap)
+        sm.set_array([])
+        fig.colorbar(sm, ax=axes[-1], shrink=0.75, label="DoG response")
+
     plt.tight_layout()
     plt.show()
 
