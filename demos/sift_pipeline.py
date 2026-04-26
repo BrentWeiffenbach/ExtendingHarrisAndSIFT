@@ -12,6 +12,7 @@ from src.common.visualization import (
     plot_dog_scale_space,
     plot_dog_scale_space_3d,
     plot_extrema_gradient_overlay,
+    plot_extrema_circles_3d,
     plot_extrema_gradient_overlay_3d,
     plot_extrema_scale_space_3d,
     plot_gaussian_scale_space,
@@ -293,6 +294,7 @@ def run_3d_extrema_demo(
     params = SIFT3DParams()
     detector = SIFT3DVoxel(params)
     result = detector.run(volume)
+    plot_extrema_circles_3d(result.original_volume, result.extrema_global)
     plot_extrema_gradient_overlay_3d(
         result.original_volume,
         result.extrema_global,

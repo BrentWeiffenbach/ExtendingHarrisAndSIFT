@@ -38,17 +38,18 @@ class SIFT2DParams:
 
 @dataclass
 class SIFT3DParams:
-    num_octaves: int = 4
+    num_octaves: int = 3
     scales_per_octave: int = 5
-    base_sigma: float = 1.2
+    base_sigma: float = 1.6
     min_size: int = 8
     downsample_factor: int = 2
     downsample_sigma: float = 1.0
     border_mode: str = "reflect"
     slice_axis: int = 0
-    extrema_contrast_threshold: float = 0.01
+    extrema_contrast_threshold: float = 0.3
     extrema_border: int = 1
     refinement_offset_threshold: float = 1.0
     refinement_singular_eps: float = 1e-10
     blob_radius_factor: float = 1.0
     max_blob_keypoints: int = 2000
+    suppression_min_dist_factor: float = 1.5
