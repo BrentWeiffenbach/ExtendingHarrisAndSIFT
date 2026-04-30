@@ -246,11 +246,14 @@ def _response_stats_harris3d(
     return (float(np.mean(r_vals)), float(np.std(r_vals)), float(np.max(np.abs(r_vals))))
 
 
-def _response_stats_harris_pc(detector: HarrisPC) -> tuple[float, float, float]:
+def _response_stats_harris_pc(detector: HarrisPC, kps: np.ndarray, data: np.ndarray) -> tuple[float, float, float]:
     resp = getattr(detector, "last_response", None)
-    if resp is None or resp.size == 0:
+    if resp is None or resp.size == 0 or kps.shape[0] == 0:
         return (np.nan, np.nan, np.nan)
-    r_vals = resp.astype(float)
+    # Map detected keypoints back to the nearest original points so we can index per-point responses
+    tree = cKDTree(data.astype(float))
+    _, idx = tree.query(kps.astype(float), k=1)
+    r_vals = resp[idx].astype(float)
     return (float(np.mean(r_vals)), float(np.std(r_vals)), float(np.max(np.abs(r_vals))))
 
 
@@ -345,12 +348,12 @@ def run_single_trial(
             rt = time.perf_counter() - t0
             kps = kps.astype(float) if kps.shape[0] > 0 else np.empty((0, 3))
 
-            if detector_name == "harris3d":
-                r_mean, r_std, r_max = _response_stats_harris3d(detector, kps.astype(int) if kps.shape[0] > 0 else kps)
-            elif detector_name == "harris_pc":
-                r_mean, r_std, r_max = _response_stats_harris_pc(detector)
-            else:  # sift_voxel_pc — response not exposed
-                r_mean, r_std, r_max = np.nan, np.nan, np.nan
+        if detector_name == "harris3d":
+            r_mean, r_std, r_max = _response_stats_harris3d(detector, kps.astype(int) if kps.shape[0] > 0 else kps)
+        elif detector_name == "harris_pc":
+            r_mean, r_std, r_max = _response_stats_harris_pc(detector, kps, data)
+        else:  # sift_voxel_pc — response not exposed
+            r_mean, r_std, r_max = np.nan, np.nan, np.nan
 
         count = _keypoint_count(kps)
         coverage = _spatial_coverage(kps, data, is_voxel)

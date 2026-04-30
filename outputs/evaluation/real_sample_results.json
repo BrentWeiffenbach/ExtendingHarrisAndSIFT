@@ -1,0 +1,19 @@
+{
+  "point_cloud": {
+    "sample": "armadillo",
+    "harris_keypoints": 4,
+    "sift_keypoints": 26,
+    "plot_dir": "outputs/evaluation/real_sample_pc"
+  },
+  "voxel": {
+    "harris3d_keypoints": 28,
+    "sift3d_keypoints": 51,
+    "sample_index": 1,
+    "sample_shape": [
+      64,
+      64,
+      64
+    ],
+    "plot_dir": "outputs/evaluation/real_sample_voxel"
+  }
+}

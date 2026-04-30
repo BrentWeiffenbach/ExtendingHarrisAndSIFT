@@ -70,7 +70,7 @@ Outputs are written under:
 
 ### Point Cloud Harris evaluation
 
-Run the standalone evaluation script for Harris PC (synthetic shapes, bunny, and sensitivity analyses):
+Run the standalone evaluation script for Harris PC (synthetic + real point clouds):
 
 ```bash
 python -m src.evaluation.evaluate_pc
@@ -78,9 +78,48 @@ python -m src.evaluation.evaluate_pc
 
 This generates:
 - `outputs/harris_pc/<shape>_pc.png` — per-shape keypoint visualisation
-- `outputs/harris_pc/bunny_pc.png` — Stanford bunny keypoints
-- `outputs/harris_pc/sensitivity/noise_{panels,chart}.png`
-- `outputs/harris_pc/sensitivity/density_{panels,chart}.png`
-- `outputs/harris_pc/sensitivity/outlier_{panels,chart}.png`
+
+### Quantitative Evaluation
+
+- point cloud Harris: `src.evaluation.evaluate_pc.run_harris_pc_quantitative_evaluation`
+- voxel Harris: `src.evaluation.evaluate_voxel.run_harris3d_quantitative_evaluation`
+
+Metrics reported:
+
+- repeatability under rotation, noise, and downsampling
+- localization error after alignment
+- keypoint count stability (mean/std/CV)
+
+Run all quantitative evaluations:
+
+```bash
+# From repo root
+source .venv/bin/activate
+
+python -m src.evaluation.evaluate_pc
+python -m src.evaluation.evaluate_voxel
+```
+
+This writes machine-readable reports:
+
+- `outputs/evaluation/harris_pc/quantitative_report.json`
+- `outputs/evaluation/harris3d/quantitative_report.json`
+
+Build aggregate tables and plots:
+
+```bash
+python -m src.evaluation.build_quantitative_tables_plots \
+	--pc-report outputs/evaluation/harris_pc/quantitative_report.json \
+	--voxel-report outputs/evaluation/harris3d/quantitative_report.json \
+	--out-dir outputs/evaluation/summary
+```
+
+Generated analysis artifacts:
+
+- `outputs/evaluation/summary/summary_metrics.csv`
+- `outputs/evaluation/summary/summary_metrics.md`
+- `outputs/evaluation/summary/repeatability_mean.png`
+- `outputs/evaluation/summary/count_cv.png`
+- `outputs/evaluation/summary/localization_error_mean.png`
 
 ---

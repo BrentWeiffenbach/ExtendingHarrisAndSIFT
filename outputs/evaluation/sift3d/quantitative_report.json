@@ -1,0 +1,897 @@
+{
+  "config": {
+    "match_radius": 2.0,
+    "random_seed": 0,
+    "params": {
+      "num_octaves": 3,
+      "scales_per_octave": 5,
+      "base_sigma": 1.6,
+      "extrema_contrast_threshold": 0.3
+    },
+    "dataset_type": "both"
+  },
+  "summary": {
+    "synthetic": {
+      "rotation": {
+        "repeatability_mean": 0.42696031951780017,
+        "repeatability_std": 0.3803731325786955,
+        "localization_error_mean": 0.7400586474800857,
+        "localization_error_std": 0.46581579728421213,
+        "count_stability": {
+          "mean": 20.476190476190474,
+          "std": 21.129124669447435,
+          "cv": 1.0318874838567353,
+          "min": 0,
+          "max": 54
+        },
+        "num_trials": 21
+      },
+      "noise": {
+        "repeatability_mean": 0.4735081324078662,
+        "repeatability_std": 0.3204752743560592,
+        "localization_error_mean": 0.4999879995923423,
+        "localization_error_std": 0.31964941577603717,
+        "count_stability": {
+          "mean": 23.857142857142858,
+          "std": 24.794941331776897,
+          "cv": 1.0393089180984327,
+          "min": 0,
+          "max": 66
+        },
+        "num_trials": 21
+      },
+      "downsample": {
+        "repeatability_mean": 0.6663850185589316,
+        "repeatability_std": 0.3697635970746482,
+        "localization_error_mean": 0.6313802012206398,
+        "localization_error_std": 0.4726702186399356,
+        "count_stability": {
+          "mean": 12.047619047619047,
+          "std": 14.469923455473296,
+          "cv": 1.2010608401776255,
+          "min": 0,
+          "max": 46
+        },
+        "num_trials": 21
+      }
+    },
+    "real": {
+      "rotation": {
+        "repeatability_mean": 0.059042591395532563,
+        "repeatability_std": 0.03418637473588075,
+        "localization_error_mean": 1.336785293514631,
+        "localization_error_std": 0.07362604868573223,
+        "count_stability": {
+          "mean": 57.0,
+          "std": 6.164414002968976,
+          "cv": 0.10814761408717502,
+          "min": 50,
+          "max": 65
+        },
+        "num_trials": 3
+      },
+      "noise": {
+        "repeatability_mean": 0.7651163427694921,
+        "repeatability_std": 0.020183202535621315,
+        "localization_error_mean": 0.6744152955050419,
+        "localization_error_std": 0.1289644153786823,
+        "count_stability": {
+          "mean": 58.0,
+          "std": 2.160246899469287,
+          "cv": 0.037245636197746325,
+          "min": 56,
+          "max": 61
+        },
+        "num_trials": 3
+      },
+      "downsample": {
+        "repeatability_mean": 0.41244776599164257,
+        "repeatability_std": 0.11580619992661628,
+        "localization_error_mean": 1.123629016570922,
+        "localization_error_std": 0.22347077235347745,
+        "count_stability": {
+          "mean": 58.333333333333336,
+          "std": 12.39175353029407,
+          "cv": 0.2124300605193269,
+          "min": 42,
+          "max": 72
+        },
+        "num_trials": 3
+      }
+    }
+  },
+  "rows": [
+    {
+      "dataset": "synthetic",
+      "sample": "cone",
+      "perturbation": "rotation",
+      "level": 10.0,
+      "baseline_count": 9,
+      "perturbed_count": 6,
+      "num_matches": 6,
+      "repeatability": 0.6666666666666666,
+      "localization_error": 0.9270146810896621
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cone",
+      "perturbation": "rotation",
+      "level": 20.0,
+      "baseline_count": 9,
+      "perturbed_count": 6,
+      "num_matches": 6,
+      "repeatability": 0.6666666666666666,
+      "localization_error": 0.3891225230465761
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cone",
+      "perturbation": "rotation",
+      "level": 30.0,
+      "baseline_count": 9,
+      "perturbed_count": 6,
+      "num_matches": 6,
+      "repeatability": 0.6666666666666666,
+      "localization_error": 0.5498500147084208
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cone",
+      "perturbation": "noise",
+      "level": 0.005,
+      "baseline_count": 9,
+      "perturbed_count": 6,
+      "num_matches": 5,
+      "repeatability": 0.5555555555555556,
+      "localization_error": 0.268446790205786
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cone",
+      "perturbation": "noise",
+      "level": 0.01,
+      "baseline_count": 9,
+      "perturbed_count": 8,
+      "num_matches": 7,
+      "repeatability": 0.7777777777777778,
+      "localization_error": 0.6175648984327873
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cone",
+      "perturbation": "noise",
+      "level": 0.02,
+      "baseline_count": 9,
+      "perturbed_count": 7,
+      "num_matches": 6,
+      "repeatability": 0.6666666666666666,
+      "localization_error": 0.827889116397955
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cone",
+      "perturbation": "downsample",
+      "level": 0.85,
+      "baseline_count": 9,
+      "perturbed_count": 6,
+      "num_matches": 6,
+      "repeatability": 0.6666666666666666,
+      "localization_error": 0.9573682990964311
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cone",
+      "perturbation": "downsample",
+      "level": 0.7,
+      "baseline_count": 9,
+      "perturbed_count": 2,
+      "num_matches": 2,
+      "repeatability": 0.2222222222222222,
+      "localization_error": 0.7963911365650065
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cone",
+      "perturbation": "downsample",
+      "level": 0.5,
+      "baseline_count": 9,
+      "perturbed_count": 6,
+      "num_matches": 6,
+      "repeatability": 0.6666666666666666,
+      "localization_error": 1.127459455302048
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cube",
+      "perturbation": "rotation",
+      "level": 10.0,
+      "baseline_count": 14,
+      "perturbed_count": 38,
+      "num_matches": 2,
+      "repeatability": 0.05263157894736842,
+      "localization_error": 0.7733755560125868
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cube",
+      "perturbation": "rotation",
+      "level": 20.0,
+      "baseline_count": 14,
+      "perturbed_count": 46,
+      "num_matches": 2,
+      "repeatability": 0.043478260869565216,
+      "localization_error": 0.5276293751670383
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cube",
+      "perturbation": "rotation",
+      "level": 30.0,
+      "baseline_count": 14,
+      "perturbed_count": 42,
+      "num_matches": 2,
+      "repeatability": 0.047619047619047616,
+      "localization_error": 0.5270180555346587
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cube",
+      "perturbation": "noise",
+      "level": 0.005,
+      "baseline_count": 14,
+      "perturbed_count": 60,
+      "num_matches": 14,
+      "repeatability": 0.23333333333333334,
+      "localization_error": 0.9078356884809925
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cube",
+      "perturbation": "noise",
+      "level": 0.01,
+      "baseline_count": 14,
+      "perturbed_count": 63,
+      "num_matches": 9,
+      "repeatability": 0.14285714285714285,
+      "localization_error": 0.4189331930367371
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cube",
+      "perturbation": "noise",
+      "level": 0.02,
+      "baseline_count": 14,
+      "perturbed_count": 66,
+      "num_matches": 9,
+      "repeatability": 0.13636363636363635,
+      "localization_error": 0.6218165717062613
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cube",
+      "perturbation": "downsample",
+      "level": 0.85,
+      "baseline_count": 14,
+      "perturbed_count": 14,
+      "num_matches": 14,
+      "repeatability": 1.0,
+      "localization_error": 0.0
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cube",
+      "perturbation": "downsample",
+      "level": 0.7,
+      "baseline_count": 14,
+      "perturbed_count": 14,
+      "num_matches": 14,
+      "repeatability": 1.0,
+      "localization_error": 0.0
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cube",
+      "perturbation": "downsample",
+      "level": 0.5,
+      "baseline_count": 14,
+      "perturbed_count": 20,
+      "num_matches": 14,
+      "repeatability": 0.7,
+      "localization_error": 1.5403751669057566
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cuboid",
+      "perturbation": "rotation",
+      "level": 10.0,
+      "baseline_count": 36,
+      "perturbed_count": 54,
+      "num_matches": 20,
+      "repeatability": 0.37037037037037035,
+      "localization_error": 1.3342317783301785
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cuboid",
+      "perturbation": "rotation",
+      "level": 20.0,
+      "baseline_count": 36,
+      "perturbed_count": 52,
+      "num_matches": 14,
+      "repeatability": 0.2692307692307692,
+      "localization_error": 1.2884930006361708
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cuboid",
+      "perturbation": "rotation",
+      "level": 30.0,
+      "baseline_count": 36,
+      "perturbed_count": 52,
+      "num_matches": 9,
+      "repeatability": 0.17307692307692307,
+      "localization_error": 1.138668001453057
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cuboid",
+      "perturbation": "noise",
+      "level": 0.005,
+      "baseline_count": 36,
+      "perturbed_count": 49,
+      "num_matches": 33,
+      "repeatability": 0.673469387755102,
+      "localization_error": 0.7970060389484152
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cuboid",
+      "perturbation": "noise",
+      "level": 0.01,
+      "baseline_count": 36,
+      "perturbed_count": 50,
+      "num_matches": 28,
+      "repeatability": 0.56,
+      "localization_error": 0.7708825251870505
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cuboid",
+      "perturbation": "noise",
+      "level": 0.02,
+      "baseline_count": 36,
+      "perturbed_count": 46,
+      "num_matches": 21,
+      "repeatability": 0.45652173913043476,
+      "localization_error": 0.7151896038735938
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cuboid",
+      "perturbation": "downsample",
+      "level": 0.85,
+      "baseline_count": 36,
+      "perturbed_count": 46,
+      "num_matches": 34,
+      "repeatability": 0.7391304347826086,
+      "localization_error": 1.108125515625501
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cuboid",
+      "perturbation": "downsample",
+      "level": 0.7,
+      "baseline_count": 36,
+      "perturbed_count": 36,
+      "num_matches": 36,
+      "repeatability": 1.0,
+      "localization_error": 0.0
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cuboid",
+      "perturbation": "downsample",
+      "level": 0.5,
+      "baseline_count": 36,
+      "perturbed_count": 22,
+      "num_matches": 20,
+      "repeatability": 0.5555555555555556,
+      "localization_error": 1.3192559764679006
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cylinder",
+      "perturbation": "rotation",
+      "level": 10.0,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.07980902625573146
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cylinder",
+      "perturbation": "rotation",
+      "level": 20.0,
+      "baseline_count": 1,
+      "perturbed_count": 9,
+      "num_matches": 1,
+      "repeatability": 0.1111111111111111,
+      "localization_error": 0.1635823952000065
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cylinder",
+      "perturbation": "rotation",
+      "level": 30.0,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.26111166631586813
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cylinder",
+      "perturbation": "noise",
+      "level": 0.005,
+      "baseline_count": 1,
+      "perturbed_count": 3,
+      "num_matches": 1,
+      "repeatability": 0.3333333333333333,
+      "localization_error": 0.047513562763886553
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cylinder",
+      "perturbation": "noise",
+      "level": 0.01,
+      "baseline_count": 1,
+      "perturbed_count": 3,
+      "num_matches": 1,
+      "repeatability": 0.3333333333333333,
+      "localization_error": 0.043643179148461685
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cylinder",
+      "perturbation": "noise",
+      "level": 0.02,
+      "baseline_count": 1,
+      "perturbed_count": 5,
+      "num_matches": 1,
+      "repeatability": 0.2,
+      "localization_error": 0.035511782035857066
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cylinder",
+      "perturbation": "downsample",
+      "level": 0.85,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.4762249637534948
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cylinder",
+      "perturbation": "downsample",
+      "level": 0.7,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.15478567935273455
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "cylinder",
+      "perturbation": "downsample",
+      "level": 0.5,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.6378487475546915
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "pyramid",
+      "perturbation": "rotation",
+      "level": 10.0,
+      "baseline_count": 37,
+      "perturbed_count": 37,
+      "num_matches": 13,
+      "repeatability": 0.35135135135135137,
+      "localization_error": 1.296401166332174
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "pyramid",
+      "perturbation": "rotation",
+      "level": 20.0,
+      "baseline_count": 37,
+      "perturbed_count": 37,
+      "num_matches": 11,
+      "repeatability": 0.2972972972972973,
+      "localization_error": 1.0736716716179873
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "pyramid",
+      "perturbation": "rotation",
+      "level": 30.0,
+      "baseline_count": 37,
+      "perturbed_count": 40,
+      "num_matches": 10,
+      "repeatability": 0.25,
+      "localization_error": 1.7163026126783336
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "pyramid",
+      "perturbation": "noise",
+      "level": 0.005,
+      "baseline_count": 37,
+      "perturbed_count": 45,
+      "num_matches": 30,
+      "repeatability": 0.6666666666666666,
+      "localization_error": 0.584980777361853
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "pyramid",
+      "perturbation": "noise",
+      "level": 0.01,
+      "baseline_count": 37,
+      "perturbed_count": 44,
+      "num_matches": 28,
+      "repeatability": 0.6363636363636364,
+      "localization_error": 0.7587078765901606
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "pyramid",
+      "perturbation": "noise",
+      "level": 0.02,
+      "baseline_count": 37,
+      "perturbed_count": 42,
+      "num_matches": 24,
+      "repeatability": 0.5714285714285714,
+      "localization_error": 0.8361731806492209
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "pyramid",
+      "perturbation": "downsample",
+      "level": 0.85,
+      "baseline_count": 37,
+      "perturbed_count": 45,
+      "num_matches": 37,
+      "repeatability": 0.8222222222222222,
+      "localization_error": 0.4940253024962897
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "pyramid",
+      "perturbation": "downsample",
+      "level": 0.7,
+      "baseline_count": 37,
+      "perturbed_count": 17,
+      "num_matches": 17,
+      "repeatability": 0.4594594594594595,
+      "localization_error": 1.1095696194441071
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "pyramid",
+      "perturbation": "downsample",
+      "level": 0.5,
+      "baseline_count": 37,
+      "perturbed_count": 19,
+      "num_matches": 6,
+      "repeatability": 0.16216216216216217,
+      "localization_error": 0.6927984710158551
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "sphere",
+      "perturbation": "rotation",
+      "level": 10.0,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.6147791412048993
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "sphere",
+      "perturbation": "rotation",
+      "level": 20.0,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.1255596254616913
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "sphere",
+      "perturbation": "rotation",
+      "level": 30.0,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.534435363596502
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "sphere",
+      "perturbation": "noise",
+      "level": 0.005,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.020957064297569262
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "sphere",
+      "perturbation": "noise",
+      "level": 0.01,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.6681920390624755
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "sphere",
+      "perturbation": "noise",
+      "level": 0.02,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.05854010448309768
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "sphere",
+      "perturbation": "downsample",
+      "level": 0.85,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.4703416380762131
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "sphere",
+      "perturbation": "downsample",
+      "level": 0.7,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.44583790456625055
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "sphere",
+      "perturbation": "downsample",
+      "level": 0.5,
+      "baseline_count": 1,
+      "perturbed_count": 1,
+      "num_matches": 1,
+      "repeatability": 1.0,
+      "localization_error": 0.034435745749234456
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "torus",
+      "perturbation": "rotation",
+      "level": 10.0,
+      "baseline_count": 0,
+      "perturbed_count": 0,
+      "num_matches": 0,
+      "repeatability": 0.0,
+      "localization_error": null
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "torus",
+      "perturbation": "rotation",
+      "level": 20.0,
+      "baseline_count": 0,
+      "perturbed_count": 0,
+      "num_matches": 0,
+      "repeatability": 0.0,
+      "localization_error": null
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "torus",
+      "perturbation": "rotation",
+      "level": 30.0,
+      "baseline_count": 0,
+      "perturbed_count": 0,
+      "num_matches": 0,
+      "repeatability": 0.0,
+      "localization_error": null
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "torus",
+      "perturbation": "noise",
+      "level": 0.005,
+      "baseline_count": 0,
+      "perturbed_count": 0,
+      "num_matches": 0,
+      "repeatability": 0.0,
+      "localization_error": null
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "torus",
+      "perturbation": "noise",
+      "level": 0.01,
+      "baseline_count": 0,
+      "perturbed_count": 0,
+      "num_matches": 0,
+      "repeatability": 0.0,
+      "localization_error": null
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "torus",
+      "perturbation": "noise",
+      "level": 0.02,
+      "baseline_count": 0,
+      "perturbed_count": 1,
+      "num_matches": 0,
+      "repeatability": 0.0,
+      "localization_error": null
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "torus",
+      "perturbation": "downsample",
+      "level": 0.85,
+      "baseline_count": 0,
+      "perturbed_count": 0,
+      "num_matches": 0,
+      "repeatability": 0.0,
+      "localization_error": null
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "torus",
+      "perturbation": "downsample",
+      "level": 0.7,
+      "baseline_count": 0,
+      "perturbed_count": 0,
+      "num_matches": 0,
+      "repeatability": 0.0,
+      "localization_error": null
+    },
+    {
+      "dataset": "synthetic",
+      "sample": "torus",
+      "perturbation": "downsample",
+      "level": 0.5,
+      "baseline_count": 0,
+      "perturbed_count": 0,
+      "num_matches": 0,
+      "repeatability": 0.0,
+      "localization_error": null
+    },
+    {
+      "dataset": "real",
+      "sample": "modelnet_1",
+      "perturbation": "rotation",
+      "level": 10.0,
+      "baseline_count": 51,
+      "perturbed_count": 56,
+      "num_matches": 6,
+      "repeatability": 0.10714285714285714,
+      "localization_error": 1.366943614576318
+    },
+    {
+      "dataset": "real",
+      "sample": "modelnet_1",
+      "perturbation": "rotation",
+      "level": 20.0,
+      "baseline_count": 51,
+      "perturbed_count": 50,
+      "num_matches": 2,
+      "repeatability": 0.0392156862745098,
+      "localization_error": 1.2353982577888445
+    },
+    {
+      "dataset": "real",
+      "sample": "modelnet_1",
+      "perturbation": "rotation",
+      "level": 30.0,
+      "baseline_count": 51,
+      "perturbed_count": 65,
+      "num_matches": 2,
+      "repeatability": 0.03076923076923077,
+      "localization_error": 1.4080140081787307
+    },
+    {
+      "dataset": "real",
+      "sample": "modelnet_1",
+      "perturbation": "noise",
+      "level": 0.005,
+      "baseline_count": 51,
+      "perturbed_count": 57,
+      "num_matches": 44,
+      "repeatability": 0.7719298245614035,
+      "localization_error": 0.4928675815763926
+    },
+    {
+      "dataset": "real",
+      "sample": "modelnet_1",
+      "perturbation": "noise",
+      "level": 0.01,
+      "baseline_count": 51,
+      "perturbed_count": 56,
+      "num_matches": 44,
+      "repeatability": 0.7857142857142857,
+      "localization_error": 0.7500877841072294
+    },
+    {
+      "dataset": "real",
+      "sample": "modelnet_1",
+      "perturbation": "noise",
+      "level": 0.02,
+      "baseline_count": 51,
+      "perturbed_count": 61,
+      "num_matches": 45,
+      "repeatability": 0.7377049180327869,
+      "localization_error": 0.7802905208315036
+    },
+    {
+      "dataset": "real",
+      "sample": "modelnet_1",
+      "perturbation": "downsample",
+      "level": 0.85,
+      "baseline_count": 51,
+      "perturbed_count": 42,
+      "num_matches": 29,
+      "repeatability": 0.5686274509803921,
+      "localization_error": 0.8168139456325604
+    },
+    {
+      "dataset": "real",
+      "sample": "modelnet_1",
+      "perturbation": "downsample",
+      "level": 0.7,
+      "baseline_count": 51,
+      "perturbed_count": 72,
+      "num_matches": 21,
+      "repeatability": 0.2916666666666667,
+      "localization_error": 1.2114075696603213
+    },
+    {
+      "dataset": "real",
+      "sample": "modelnet_1",
+      "perturbation": "downsample",
+      "level": 0.5,
+      "baseline_count": 51,
+      "perturbed_count": 61,
+      "num_matches": 23,
+      "repeatability": 0.3770491803278688,
+      "localization_error": 1.3426655344198846
+    }
+  ]
+}
