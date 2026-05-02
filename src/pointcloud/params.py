@@ -38,8 +38,8 @@ class SIFTVoxelPCParams:
 class HarrisPCParams:
     k: float = 0.02
     neighborhood: str = "knn"
-    k_neighbors: int = 170
-    radius: float = 0.05
+    k_neighbors: int = 250
+    radius: float = 0.2
     threshold_rel: float = 0.02
     response_mode: str = "positive"
     nms_radius: float = 0.0
