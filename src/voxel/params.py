@@ -8,6 +8,16 @@ class Harris3DParams:
     gradient_sigma: float = 0.48266
     tensor_sigma: float = 0.67641
     threshold_rel: float = 0.00387
+    # Absolute response floor applied *after* the relative threshold.
+    # Any candidate whose score is below this value is discarded regardless
+    # of how it compares to the volume maximum.  Set to 0.0 to disable.
+    # Calibrated so isolated noise voxels (~2e-6) are suppressed while
+    # genuine cube/pyramid/torus corners (~8e-6 and above) are kept.
+    threshold_abs: float = 5e-6
+    # Hard cap on the number of keypoints returned, ordered by descending
+    # response score.  Prevents noise explosions from flooding downstream
+    # consumers.  Set to 0 to disable.
+    max_keypoints: int = 50
     response_mode: str = "positive"
     nms_window: int = 5
     border: int = 0

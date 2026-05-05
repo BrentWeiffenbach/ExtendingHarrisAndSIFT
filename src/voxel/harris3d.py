@@ -73,7 +73,24 @@ class Harris3DVoxel(Detector3D):
         self.last_response = response
 
         response_mode = str(self.params.response_mode).lower()
-        if response_mode == "positive":
+        if response_mode == "shi_tomasi":
+            # Minimum eigenvalue of the 3×3 structure tensor.
+            # Eigenvalues are rotation-invariant by construction, so this
+            # criterion detects corners regardless of orientation — the
+            # staircase produced by voxel-grid rotation no longer inflates
+            # a penalty term and suppresses all responses.  No 'k' parameter
+            # is needed; the response is always ≥ 0 (J is PSD).
+            sh = jxx.shape
+            J = np.empty(sh + (3, 3), dtype=np.float64)
+            J[..., 0, 0] = jxx
+            J[..., 1, 1] = jyy
+            J[..., 2, 2] = jzz
+            J[..., 0, 1] = J[..., 1, 0] = jxy
+            J[..., 0, 2] = J[..., 2, 0] = jxz
+            J[..., 1, 2] = J[..., 2, 1] = jyz
+            eigs = np.linalg.eigvalsh(J)  # ascending order, shape (*sh, 3)
+            score = eigs[..., 0]  # minimum eigenvalue
+        elif response_mode == "positive":
             score = response
         elif response_mode == "negative":
             score = -response
@@ -81,7 +98,7 @@ class Harris3DVoxel(Detector3D):
             score = np.abs(response)
         else:
             raise ValueError(
-                "response_mode must be one of: positive, negative, absolute"
+                "response_mode must be one of: shi_tomasi, positive, negative, absolute"
             )
 
         nms_window = int(self.params.nms_window)
@@ -111,8 +128,23 @@ class Harris3DVoxel(Detector3D):
             return np.empty((0, 3), dtype=np.int32)
 
         scores = score[coords_zyx[:, 0], coords_zyx[:, 1], coords_zyx[:, 2]]
+
+        # --- Absolute response floor ---
+        # Removes weak spurious candidates (e.g. isolated noise voxels) that
+        # survive the relative threshold only because the overall response
+        # maximum is itself small.  Applied before NMS so the greedy pass
+        # only considers geometrically meaningful candidates.
+        abs_floor = float(self.params.threshold_abs)
+        if abs_floor > 0.0:
+            valid = scores >= abs_floor
+            coords_zyx = coords_zyx[valid]
+            scores = scores[valid]
+            if coords_zyx.size == 0:
+                return np.empty((0, 3), dtype=np.int32)
+
         order = np.argsort(scores)[::-1]
         coords_zyx = coords_zyx[order]
+        scores = scores[order]
 
         radius = nms_window // 2
         kept = []
@@ -122,6 +154,12 @@ class Harris3DVoxel(Detector3D):
         if not kept:
             return np.empty((0, 3), dtype=np.int32)
         coords_zyx = np.asarray(kept, dtype=np.int32)
+
+        # --- Hard count cap ---
+        # Applied after NMS so only the highest-scoring keypoints are kept.
+        max_kp = int(self.params.max_keypoints)
+        if max_kp > 0 and coords_zyx.shape[0] > max_kp:
+            coords_zyx = coords_zyx[:max_kp]
 
         bins = self.params.balanced_bins
         if any(b > 1 for b in bins):
