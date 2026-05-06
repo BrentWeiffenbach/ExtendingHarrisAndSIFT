@@ -261,7 +261,7 @@ def run_3d_pc(
         params = SIFTRadiiPCParams()
         keypoints = SIFTRadiiPC(params).detect(pts)
     elif pc_detector == "voxel":
-        params = SIFTVoxelPCParams(voxel_size=0.05)
+        params = SIFTVoxelPCParams()
         keypoints = SIFTVoxelPC(params).detect(pts)
     else:
         raise ValueError(f"Unknown PC detector: {pc_detector}")

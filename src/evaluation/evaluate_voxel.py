@@ -40,7 +40,7 @@ def _inverse_rotate_points_voxel(
     shape_xyz: np.ndarray,
 ) -> np.ndarray:
     center = (shape_xyz - 1.0) / 2.0
-    theta = np.deg2rad(-angle_deg)
+    theta = np.deg2rad(angle_deg)
     c = float(np.cos(theta))
     s = float(np.sin(theta))
     rot = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], dtype=np.float64)
@@ -330,7 +330,13 @@ def run_harris3d_quantitative_evaluation(
                 ],
                 dtype=np.float64,
             )
+            baselines = [int(r["baseline_count"]) for r in perturb_rows]
             counts = [int(r["perturbed_count"]) for r in perturb_rows]
+            sample_names = sorted({r["sample"] for r in perturb_rows})
+            groups = [
+                [int(r["perturbed_count"]) for r in perturb_rows if r["sample"] == s]
+                for s in sample_names
+            ]
             summary[split_name][perturb] = {
                 "repeatability_mean": float(np.mean(rep)),
                 "repeatability_std": float(np.std(rep)),
@@ -338,7 +344,7 @@ def run_harris3d_quantitative_evaluation(
                 if loc.size > 0
                 else None,
                 "localization_error_std": float(np.std(loc)) if loc.size > 0 else None,
-                "count_stability": keypoint_count_stability(counts),
+                "count_stability": keypoint_count_stability(counts, groups=groups, baselines=baselines),
                 "num_trials": len(perturb_rows),
             }
 
@@ -506,7 +512,13 @@ def run_sift3d_quantitative_evaluation(
                 ],
                 dtype=np.float64,
             )
+            baselines = [int(r["baseline_count"]) for r in perturb_rows]
             counts = [int(r["perturbed_count"]) for r in perturb_rows]
+            sample_names = sorted({r["sample"] for r in perturb_rows})
+            groups = [
+                [int(r["perturbed_count"]) for r in perturb_rows if r["sample"] == s]
+                for s in sample_names
+            ]
             summary[split_name][perturb] = {
                 "repeatability_mean": float(np.mean(rep)),
                 "repeatability_std": float(np.std(rep)),
@@ -514,7 +526,7 @@ def run_sift3d_quantitative_evaluation(
                 if loc.size > 0
                 else None,
                 "localization_error_std": float(np.std(loc)) if loc.size > 0 else None,
-                "count_stability": keypoint_count_stability(counts),
+                "count_stability": keypoint_count_stability(counts, groups=groups, baselines=baselines),
                 "num_trials": len(perturb_rows),
             }
 
@@ -581,8 +593,8 @@ if __name__ == "__main__":
 
         reports = {
             "harris_pc": Path("outputs/evaluation/harris_pc/quantitative_report.json"),
-            "sift_geom_pc": Path(
-                "outputs/evaluation/sift_geom_pc/quantitative_report.json"
+            "sift-radii": Path(
+                "outputs/evaluation/sift_radii/quantitative_report.json"
             ),
             "harris3d_voxel": Path(
                 "outputs/evaluation/harris3d/quantitative_report.json"

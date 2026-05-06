@@ -35,7 +35,11 @@ def _flatten_summary(detector: str, report: dict) -> list[dict]:
                         if stats["localization_error_std"] is None
                         else float(stats["localization_error_std"])
                     ),
-                    "count_cv": float(stats["count_stability"]["cv"]),
+                    "count_stability": (
+                        float(stats["count_stability"]["retention"])
+                        if stats["count_stability"].get("retention") is not None
+                        else 1.0 / (1.0 + float(stats["count_stability"]["cv"]))
+                    ),
                     "num_trials": int(stats["num_trials"]),
                 }
             )
@@ -51,7 +55,7 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
         "repeatability_std",
         "localization_error_mean",
         "localization_error_std",
-        "count_cv",
+        "count_stability",
         "num_trials",
     ]
     with path.open("w", encoding="utf-8", newline="") as f:
@@ -64,7 +68,7 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
 def _write_markdown_table(path: Path, rows: list[dict]) -> None:
     header = (
         "| Detector | Dataset | Perturbation | Repeatability (mean±std) | "
-        "Localization Error (mean±std) | Count CV | Trials |\n"
+        "Localization Error (mean±std) | Count Stability | Trials |\n"
         "|---|---|---|---:|---:|---:|---:|\n"
     )
     lines = [header]
@@ -82,7 +86,7 @@ def _write_markdown_table(path: Path, rows: list[dict]) -> None:
             f"{row['perturbation']} | "
             f"{row['repeatability_mean']:.3f}±{row['repeatability_std']:.3f} | "
             f"{loc_str} | "
-            f"{row['count_cv']:.3f} | "
+            f"{row['count_stability']:.3f} | "
             f"{row['num_trials']} |\n"
         )
 
@@ -91,7 +95,12 @@ def _write_markdown_table(path: Path, rows: list[dict]) -> None:
 
 
 def _plot_metric_grid(
-    rows: list[dict], out_path: Path, metric: str, title: str, ylabel: str
+    rows: list[dict],
+    out_path: Path,
+    metric: str,
+    title: str,
+    ylabel: str,
+    ylim: tuple[float, float] | None = None,
 ) -> None:
     detectors = sorted({r["detector"] for r in rows})
     datasets = sorted({r["dataset"] for r in rows})
@@ -126,6 +135,8 @@ def _plot_metric_grid(
             ax.set_xticklabels(perturbations)
             ax.set_title(f"{detector} | {dataset}")
             ax.set_ylabel(ylabel)
+            if ylim is not None:
+                ax.set_ylim(ylim)
             ax.grid(axis="y", alpha=0.25)
 
     fig.suptitle(title)
@@ -168,13 +179,15 @@ def build_tables_and_plots(reports: dict[str, Path], out_dir: Path) -> None:
         metric="repeatability_mean",
         title="Repeatability Mean by Detector, Dataset, Perturbation",
         ylabel="Repeatability",
+        ylim=(0.0, 1.0),
     )
     _plot_metric_grid(
         rows_sorted,
-        out_dir / "count_cv.png",
-        metric="count_cv",
-        title="Keypoint Count Coefficient of Variation",
-        ylabel="Count CV",
+        out_dir / "count_stability.png",
+        metric="count_stability",
+        title="Keypoint Count Stability (higher = more robust)",
+        ylabel="Count Stability",
+        ylim=(0.0, 1.0),
     )
     _plot_metric_grid(
         rows_sorted,
@@ -187,7 +200,7 @@ def build_tables_and_plots(reports: dict[str, Path], out_dir: Path) -> None:
 
 _DEFAULT_REPORTS: dict[str, Path] = {
     "harris_pc": Path("outputs/evaluation/harris_pc/quantitative_report.json"),
-    "sift_geom_pc": Path("outputs/evaluation/sift_geom_pc/quantitative_report.json"),
+    "sift-radii": Path("outputs/evaluation/sift_radii/quantitative_report.json"),
     "harris3d_voxel": Path("outputs/evaluation/harris3d/quantitative_report.json"),
     "sift3d_voxel": Path("outputs/evaluation/sift3d/quantitative_report.json"),
 }

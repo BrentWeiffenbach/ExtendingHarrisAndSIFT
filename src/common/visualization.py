@@ -1163,21 +1163,21 @@ def plot_extrema_gradient_overlay(
                 )
             )
 
-            ax.quiver(
-                x,
-                y,
-                dx,
-                dy,
-                color=[color],
-                angles="xy",
-                scale_units="xy",
-                scale=1.0,
-                width=0.0045,
-                headwidth=4.5,
-                headlength=6.0,
-                headaxislength=5.2,
-                alpha=0.95,
-            )
+            # ax.quiver(
+            #     x,
+            #     y,
+            #     dx,
+            #     dy,
+            #     color=[color],
+            #     angles="xy",
+            #     scale_units="xy",
+            #     scale=1.0,
+            #     width=0.0045,
+            #     headwidth=4.5,
+            #     headlength=6.0,
+            #     headaxislength=5.2,
+            #     alpha=0.95,
+            # )
 
         sm = cm.ScalarMappable(norm=norm, cmap=cmap)
         sm.set_array([])

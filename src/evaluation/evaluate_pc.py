@@ -281,7 +281,13 @@ def run_harris_pc_quantitative_evaluation(
                 ],
                 dtype=np.float64,
             )
+            baselines = [int(r["baseline_count"]) for r in perturb_rows]
             counts = [int(r["perturbed_count"]) for r in perturb_rows]
+            sample_names = sorted({r["sample"] for r in perturb_rows})
+            groups = [
+                [int(r["perturbed_count"]) for r in perturb_rows if r["sample"] == s]
+                for s in sample_names
+            ]
             summary[split_name][perturb] = {
                 "repeatability_mean": float(np.mean(rep)),
                 "repeatability_std": float(np.std(rep)),
@@ -289,7 +295,7 @@ def run_harris_pc_quantitative_evaluation(
                 if loc.size > 0
                 else None,
                 "localization_error_std": float(np.std(loc)) if loc.size > 0 else None,
-                "count_stability": keypoint_count_stability(counts),
+                "count_stability": keypoint_count_stability(counts, groups=groups, baselines=baselines),
                 "num_trials": len(perturb_rows),
             }
 
@@ -317,7 +323,7 @@ def run_harris_pc_quantitative_evaluation(
 
 def run_sift_geom_pc_quantitative_evaluation(
     params: SIFTRadiiPCParams | None = None,
-    out_dir: str = "outputs/evaluation/sift_geom_pc",
+    out_dir: str = "outputs/evaluation/sift_radii",
     random_seed: int = 0,
     match_radius: float = 0.05,
     dataset_type: str = "synthetic",
@@ -446,7 +452,13 @@ def run_sift_geom_pc_quantitative_evaluation(
                 ],
                 dtype=np.float64,
             )
+            baselines = [int(r["baseline_count"]) for r in perturb_rows]
             counts = [int(r["perturbed_count"]) for r in perturb_rows]
+            sample_names = sorted({r["sample"] for r in perturb_rows})
+            groups = [
+                [int(r["perturbed_count"]) for r in perturb_rows if r["sample"] == s]
+                for s in sample_names
+            ]
             summary[split_name][perturb] = {
                 "repeatability_mean": float(np.mean(rep)),
                 "repeatability_std": float(np.std(rep)),
@@ -454,7 +466,7 @@ def run_sift_geom_pc_quantitative_evaluation(
                 if loc.size > 0
                 else None,
                 "localization_error_std": float(np.std(loc)) if loc.size > 0 else None,
-                "count_stability": keypoint_count_stability(counts),
+                "count_stability": keypoint_count_stability(counts, groups=groups, baselines=baselines),
                 "num_trials": len(perturb_rows),
             }
 
@@ -505,7 +517,7 @@ if __name__ == "__main__":
     print("\n=== Quantitative evaluation (SIFT-Geom PC, synthetic + real) ===")
     sift_report = run_sift_geom_pc_quantitative_evaluation()
     for split_name, split_summary in sift_report["summary"].items():
-        print(f"\n[sift_geom_pc | {split_name}]")
+        print(f"\n[sift-radii | {split_name}]")
         for perturb, stats in split_summary.items():
             print(
                 "  "
@@ -523,8 +535,8 @@ if __name__ == "__main__":
 
         reports = {
             "harris_pc": Path("outputs/evaluation/harris_pc/quantitative_report.json"),
-            "sift_geom_pc": Path(
-                "outputs/evaluation/sift_geom_pc/quantitative_report.json"
+            "sift-radii": Path(
+                "outputs/evaluation/sift_radii/quantitative_report.json"
             ),
             "harris3d_voxel": Path(
                 "outputs/evaluation/harris3d/quantitative_report.json"

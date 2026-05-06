@@ -86,7 +86,11 @@ def localization_error(distances: np.ndarray) -> float | None:
     return float(np.mean(d))
 
 
-def keypoint_count_stability(counts: list[int]) -> dict:
+def keypoint_count_stability(
+    counts: list[int],
+    groups: list[list[int]] | None = None,
+    baselines: list[int] | None = None,
+) -> dict:
     if not counts:
         return {
             "mean": 0.0,
@@ -99,11 +103,31 @@ def keypoint_count_stability(counts: list[int]) -> dict:
     arr = np.asarray(counts, dtype=np.float64)
     mean_v = float(np.mean(arr))
     std_v = float(np.std(arr))
-    cv_v = float(std_v / mean_v) if mean_v > 0 else 0.0
+
+    if groups is not None:
+        # Mean of within-sample CVs: measures perturbation robustness, not between-shape diversity.
+        per_group_cvs: list[float] = []
+        for g in groups:
+            g_arr = np.asarray(g, dtype=np.float64)
+            g_mean = float(np.mean(g_arr))
+            per_group_cvs.append(float(np.std(g_arr) / g_mean) if g_mean > 0 else 0.0)
+        cv_v = float(np.mean(per_group_cvs)) if per_group_cvs else 0.0
+    else:
+        cv_v = float(std_v / mean_v) if mean_v > 0 else 0.0
+
+    retention: float | None = None
+    if baselines is not None and len(baselines) == len(counts):
+        retentions = []
+        for b, p in zip(baselines, counts):
+            m = max(b, p)
+            retentions.append(1.0 if m == 0 else min(b, p) / m)
+        retention = float(np.mean(retentions)) if retentions else None
+
     return {
         "mean": mean_v,
         "std": std_v,
         "cv": cv_v,
         "min": int(np.min(arr)),
         "max": int(np.max(arr)),
+        "retention": retention,
     }

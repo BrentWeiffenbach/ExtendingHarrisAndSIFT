@@ -383,11 +383,7 @@ def run_pc_radii_napari_demo(
     pts, name = _load_synthetic_pc(synthetic_name)
     print(f"Loaded '{name}' point cloud: {pts.shape[0]} points")
 
-    params = SIFTRadiiPCParams(
-        num_octaves=3,
-        radii=[0.02, 0.04, 0.08, 0.16],
-        contrast_threshold=0.0005,
-    )
+    params = SIFTRadiiPCParams()
     detector = SIFTRadiiPC(params)
     result = detector.run(pts)
     print(f"Detected {result.keypoints.shape[0]} keypoints")
@@ -425,7 +421,7 @@ def run_pc_voxel_demo(
     pts, name = _load_synthetic_pc(synthetic_name)
     print(f"Loaded '{name}' point cloud: {pts.shape[0]} points")
 
-    params = SIFTVoxelPCParams(voxel_size=0.05)
+    params = SIFTVoxelPCParams()
     detector = SIFTVoxelPC(params)
     run_result = detector.run(pts)
 
@@ -477,12 +473,8 @@ def run_pc_sift_response_demo(
     pts, name = _load_synthetic_pc(synthetic_name)
     print(f"Loaded '{name}': {pts.shape[0]} points")
 
-    radii_params = SIFTRadiiPCParams(
-        num_octaves=3,
-        radii=[0.05, 0.08, 0.13, 0.2],
-        contrast_threshold=0.0005,
-    )
-    voxel_params = SIFTVoxelPCParams(voxel_size=0.05)
+    radii_params = SIFTRadiiPCParams()
+    voxel_params = SIFTVoxelPCParams()
 
     print("Running SIFTRadiiPC...")
     radii_result = SIFTRadiiPC(radii_params).run(pts)
