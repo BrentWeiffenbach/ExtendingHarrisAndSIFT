@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy.spatial import cKDTree as KDTree
+from scipy.spatial import KDTree
 import open3d as o3d
 
 from src.common.base_detector import Detector3D
@@ -73,13 +73,11 @@ class SIFTRadiiPC(Detector3D):
             tree = KDTree(current_pts.astype(np.float64))
             octave_smoothed: list[np.ndarray] = []
             octave_radii: list[float] = []
-            octave_scale = 2.0**octave
 
             for r in self.params.radii:
-                r_scaled = float(r) * octave_scale
-                smoothed = self._compute_smoothed_positions(current_pts, tree, r_scaled)
+                smoothed = self._compute_smoothed_positions(current_pts, tree, r)
                 octave_smoothed.append(smoothed)
-                octave_radii.append(r_scaled)
+                octave_radii.append(float(r))
 
             smoothed_pyramid.append(octave_smoothed)
             radii_pyramid.append(octave_radii)
@@ -133,9 +131,11 @@ class SIFTRadiiPC(Detector3D):
         dog_radii: list[list[float]],
         points_per_octave: list[np.ndarray],
     ) -> list[np.ndarray]:
-        """NMS detection: each candidate must be a spatial maximum and exceed the
-        same point at both adjacent scale levels (analog of the 26-neighbor check
-        from the SIFT paper, adapted for unordered point sets).
+        """Spatial-NMS-only detection across all scale levels.
+
+        Displacement from original is monotonically increasing with scale, so no
+        level is ever a scale-axis extremum.  Instead: at each scale find spatial
+        maxima above threshold, then deduplicate across scales with a greedy NMS pass.
         """
         threshold = float(self.params.contrast_threshold)
         extrema_by_octave: list[np.ndarray] = []
@@ -144,105 +144,63 @@ class SIFTRadiiPC(Detector3D):
             pts = points_per_octave[octave_idx]
             radii = dog_radii[octave_idx]
 
-            if len(octave_dogs) < 3:
+            if not octave_dogs:
                 extrema_by_octave.append(np.empty((0, 5), dtype=np.float32))
                 continue
 
             tree = KDTree(pts.astype(np.float64))
-            scale_kept_xyz: list[np.ndarray] = []
-            scale_kept_r: list[float] = []
-            scale_kept_vals: list[np.ndarray] = []
+            candidates: list[tuple[float, float, float, float, float]] = []
 
-            for scale_idx in range(1, len(octave_dogs) - 1):
-                curr_dog = octave_dogs[scale_idx]
-                prev_dog = octave_dogs[scale_idx - 1]
-                next_dog = octave_dogs[scale_idx + 1]
+            for scale_idx, curr_dog in enumerate(octave_dogs):
                 r_char = radii[scale_idx]
                 nms_r = r_char * self.params.nms_radius_factor
 
-                # Vectorized threshold + scale-axis check in one numpy pass.
-                candidate_indices = np.where(
-                    (curr_dog >= threshold)
-                    & (curr_dog > prev_dog)
-                    & (curr_dog > next_dog)
-                )[0]
+                candidate_indices = np.where(curr_dog >= threshold)[0]
 
-                if candidate_indices.size == 0:
-                    continue
+                for i in candidate_indices.tolist():
+                    val = float(curr_dog[i])
 
-                # Batch spatial query for all candidates at once with threading.
-                nbr_lists = tree.query_ball_point(
-                    pts[candidate_indices].astype(np.float64),
-                    r=nms_r,
-                    workers=-1,
-                )
+                    # Spatial NMS: must be the local maximum within nms_r
+                    nbr_indices = tree.query_ball_point(
+                        pts[i].astype(np.float64), r=nms_r
+                    )
+                    nbr_vals = curr_dog[[j for j in nbr_indices if j != i]]
+                    if nbr_vals.size > 0 and val <= float(nbr_vals.max()):
+                        continue
 
-                # Build a flat neighbour-value array so the per-candidate max can
-                # be computed with np.maximum.reduceat instead of a Python loop.
-                flat_nbrs: list[int] = []
-                lengths = np.empty(len(candidate_indices), dtype=np.intp)
-                for k, (ci, nbrs) in enumerate(
-                    zip(candidate_indices.tolist(), nbr_lists)
-                ):
-                    filtered = [j for j in nbrs if j != ci]
-                    flat_nbrs.extend(filtered)
-                    lengths[k] = len(filtered)
+                    candidates.append(
+                        (
+                            float(pts[i, 0]),
+                            float(pts[i, 1]),
+                            float(pts[i, 2]),
+                            r_char,
+                            val,
+                        )
+                    )
 
-                has_nbrs = lengths > 0
-                if has_nbrs.any() and flat_nbrs:
-                    flat_vals = curr_dog[np.array(flat_nbrs, dtype=np.intp)]
-                    nonempty_lengths = lengths[has_nbrs]
-                    # section_starts[i] is the index in flat_vals where group i begins
-                    section_starts = np.empty(len(nonempty_lengths), dtype=np.intp)
-                    section_starts[0] = 0
-                    np.cumsum(nonempty_lengths[:-1], out=section_starts[1:])
-                    max_nbr = np.full(len(candidate_indices), -np.inf, dtype=np.float32)
-                    max_nbr[has_nbrs] = np.maximum.reduceat(flat_vals, section_starts)
-                else:
-                    max_nbr = np.full(len(candidate_indices), -np.inf, dtype=np.float32)
-
-                keep_mask = curr_dog[candidate_indices] > max_nbr
-                kept = candidate_indices[keep_mask]
-                if kept.size > 0:
-                    scale_kept_xyz.append(pts[kept])
-                    scale_kept_r.append(r_char)
-                    scale_kept_vals.append(curr_dog[kept])
-
-            if not scale_kept_xyz:
+            if not candidates:
                 extrema_by_octave.append(np.empty((0, 5), dtype=np.float32))
                 continue
 
-            # Assemble candidates array from per-scale results.
-            parts = [
-                np.hstack(
-                    [
-                        xyz,
-                        np.full((len(xyz), 1), r, dtype=np.float32),
-                        vals[:, None].astype(np.float32),
-                    ]
-                )
-                for xyz, r, vals in zip(scale_kept_xyz, scale_kept_r, scale_kept_vals)
-            ]
-            cands = np.vstack(parts).astype(np.float32)
-
-            # Deduplicate across scales: greedy NMS sorted by response descending.
+            # Deduplicate across scales: greedy NMS sorted by response descending
+            cands = np.array(candidates, dtype=np.float32)
             order = np.argsort(-cands[:, 4])
             cands = cands[order]
             suppressed = np.zeros(len(cands), dtype=bool)
             dedup_r = float(max(radii)) * self.params.nms_radius_factor
             kd = KDTree(cands[:, :3].astype(np.float64))
-            kept_final: list[int] = []
+            kept: list[int] = []
             for k in range(len(cands)):
                 if suppressed[k]:
                     continue
-                kept_final.append(k)
+                kept.append(k)
                 for nb in kd.query_ball_point(
                     cands[k, :3].astype(np.float64), r=dedup_r
                 ):
                     if nb != k:
                         suppressed[nb] = True
 
-            extrema_by_octave.append(cands[kept_final])
+            extrema_by_octave.append(cands[kept])
 
         return extrema_by_octave
 
@@ -264,31 +222,24 @@ class SIFTRadiiPC(Detector3D):
         Each point is moved to the weighted centroid of its neighbours within
         `radius`.  Points with fewer than min_neighbors neighbours keep their
         original position.  Returns (N, 3) float32.
-
-        Processes query_ball_point in chunks of smoothing_chunk_size so that
-        neighbour index lists for all N points are never in RAM at once.
         """
-        n = len(points)
-        pts_f64 = points.astype(np.float64)
-        smoothed = pts_f64.copy()
+        smoothed = points.copy().astype(np.float64)
         two_r2 = 2.0 * radius * radius
-        chunk = self.params.smoothing_chunk_size
+        neighbor_lists = tree.query_ball_point(
+            points.astype(np.float64), r=radius, workers=-1
+        )
 
-        for start in range(0, n, chunk):
-            end = min(start + chunk, n)
-            nbr_lists = tree.query_ball_point(pts_f64[start:end], r=radius, workers=-1)
-            for j, nbrs in enumerate(nbr_lists):
-                if len(nbrs) < self.params.min_neighbors:
-                    continue
-                i = start + j
-                nbr_pts = pts_f64[nbrs]
-                diffs = nbr_pts - pts_f64[i]
-                sq_dists = np.einsum("ij,ij->i", diffs, diffs)
-                weights = np.exp(-sq_dists / two_r2)
-                w_sum = weights.sum()
-                if w_sum < 1e-10:
-                    continue
-                smoothed[i] = (weights[:, None] * nbr_pts).sum(axis=0) / w_sum
+        for i, nbrs in enumerate(neighbor_lists):
+            if len(nbrs) < self.params.min_neighbors:
+                continue
+            nbr_pts = points[nbrs].astype(np.float64)
+            diffs = nbr_pts - points[i].astype(np.float64)
+            sq_dists = np.einsum("ij,ij->i", diffs, diffs)
+            weights = np.exp(-sq_dists / two_r2)
+            w_sum = weights.sum()
+            if w_sum < 1e-10:
+                continue
+            smoothed[i] = (weights[:, None] * nbr_pts).sum(axis=0) / w_sum
 
         return smoothed.astype(np.float32)
 
@@ -331,7 +282,7 @@ class SIFTVoxelPC(Detector3D):
             return np.empty((0, 3), dtype=np.float32)
 
         volume, min_corner = self._voxelize(pts)
-        kp_xyz_voxel = SIFT3DVoxel(self.params).detect(volume)
+        kp_xyz_voxel = SIFT3DVoxel(self.params.sift3d).detect(volume)
 
         if kp_xyz_voxel.shape[0] == 0:
             return np.empty((0, 3), dtype=np.float32)
@@ -341,7 +292,7 @@ class SIFTVoxelPC(Detector3D):
     def run(self, points: np.ndarray) -> dict:
         pts = self._validate_input(points)
         volume, min_corner = self._voxelize(pts)
-        detector = SIFT3DVoxel(self.params)
+        detector = SIFT3DVoxel(self.params.sift3d)
         result = detector.run(volume)
         kp_xyz_voxel = (
             result.extrema_global[:, [2, 1, 0]].astype(np.float32)

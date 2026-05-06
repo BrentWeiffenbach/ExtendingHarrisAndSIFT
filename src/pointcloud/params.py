@@ -10,19 +10,13 @@ from src.voxel.params import SIFT3DParams
 @dataclass
 class SIFTRadiiPCParams:
     num_octaves: int = 3
-    # Five doublings from ~avg inter-point distance to 10× that; stays well below
-    # the bbox diagonal of a [0,1]^3 normalised cloud so neighborhoods never
-    # blow up to O(N) entries.
-    radii: list[float] = field(default_factory=lambda: [0.02, 0.04, 0.08, 0.16, 0.32])
+    radii: list[float] = field(default_factory=lambda: [0.05, 0.1, 0.2, 0.4])
     fps_ratio: float = 0.5
-    contrast_threshold: float = 0.4
-    nms_radius_factor: float = 0.25
+    contrast_threshold: float = 0.45
+    nms_radius_factor: float = 1.0
     max_scale_offset: float = 1.0
     min_points_per_octave: int = 10
     min_neighbors: int = 3
-    # Process query_ball_point in batches of this many points so the neighbour
-    # lists for all N points are never materialised simultaneously in RAM.
-    smoothing_chunk_size: int = 2048
 
 
 @dataclass
