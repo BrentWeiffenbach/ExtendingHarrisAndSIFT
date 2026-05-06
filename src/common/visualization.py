@@ -149,11 +149,11 @@ def plot_voxels(
                     kp_plot[:, 1],
                     kp_plot[:, 2],
                     c="red",
-                    edgecolors="black",
-                    linewidths=0.4,
-                    s=44,
+                    marker="+",
+                    s=200,
+                    linewidths=2.5,
                     depthshade=False,
-                    zorder=5,
+                    zorder=10,
                 )
 
         # Set consistent 45° isometric-ish view
@@ -200,28 +200,17 @@ def plot_pointcloud(
 
         if keypoints_list is not None and keypoints_list[i] is not None:
             kp = _as_xyz_points(keypoints_list[i])
-            scores = None
-            if (
-                keypoint_scores_list is not None
-                and i < len(keypoint_scores_list)
-                and keypoint_scores_list[i] is not None
-            ):
-                scores = np.asarray(keypoint_scores_list[i])
-            if scores is not None and scores.size == kp.shape[0]:
-                ax.scatter(
-                    kp[:, 0],
-                    kp[:, 1],
-                    kp[:, 2],
-                    c=scores,
-                    cmap="plasma",
-                    edgecolors="black",
-                    linewidths=0.3,
-                    s=24,
-                    depthshade=False,
-                    zorder=5,
-                )
-            else:
-                ax.scatter(kp[:, 0], kp[:, 1], kp[:, 2], c="red", s=12)
+            ax.scatter(
+                kp[:, 0],
+                kp[:, 1],
+                kp[:, 2],
+                c="red",
+                marker="+",
+                s=300,
+                linewidths=2.5,
+                depthshade=False,
+                zorder=10,
+            )
 
         if titles is not None and i < len(titles):
             ax.set_title(titles[i])

@@ -182,7 +182,7 @@ def run_harris_pc_quantitative_evaluation(
 
     perturb_specs = {
         "rotation": [10.0, 20.0, 30.0, 45.0],
-        "noise": [0.002, 0.005, 0.010],
+        "noise": [0.01, 0.03, 0.06],
         "downsample": [0.9, 0.7, 0.5],
     }
 
@@ -353,7 +353,7 @@ def run_sift_geom_pc_quantitative_evaluation(
 
     perturb_specs = {
         "rotation": [10.0, 20.0, 30.0, 45.0],
-        "noise": [0.002, 0.005, 0.010],
+        "noise": [0.01, 0.03, 0.06],
         "downsample": [0.9, 0.7, 0.5],
     }
 
